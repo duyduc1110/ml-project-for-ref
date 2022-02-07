@@ -1,0 +1,10 @@
+# Ignore everything
+*/*
+/*
+
+# Not these directories
+
+
+# Not these files
+!.gitignore
+!*.py
