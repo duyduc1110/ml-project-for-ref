@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import sklearn
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 import pytorch_lightning as pl
 
@@ -13,12 +14,69 @@ from sklearn.metrics import classification_report
 class BruceModel(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(524, 1)
+        # CNN Layer
+        self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
+        self.ln1 = nn.LayerNorm(524)
+        self.avgpool1 = nn.AvgPool1d(8)
+        self.cnn2 = nn.Conv1d(1, 8, 16, padding='same')
+        self.ln2 = nn.LayerNorm(524)
+        self.avgpool2= nn.AvgPool1d(16)
+        self.flatten = nn.Flatten()
+        self.cnn_out = nn.Linear(524*2, 64)
+        self.dropout_cnn = nn.Dropout(0.1)
+
+        # FCN Layer
+        self.fc1 = nn.Linear(64, 512)
+        self.fc1_act = nn.GELU()
+        self.fc2 = nn.Linear(512, 64)
+        self.fc2_act = nn.GELU()
+        self.layernorm_fcn = nn.LayerNorm(64)
+        self.drop_fcn = nn.Dropout(0.1)
+
+        # Cls output
+        self.cls_out = nn.Linear(64, 1)
+
+        # Regression output
+        self.cls_embed = nn.Embedding(2, 64, padding_idx=0)
+        self.layernorm_rgs = nn.LayerNorm(64)
+        self.rgs_out = nn.Linear(1)
 
     def forward(self, inputs):
-        return self.fc1(inputs)
+        # CNN forward
+        x1 = self.avgpool1(self.ln1(self.cnn1(inputs)))
+        x2 = self.avgpool2(self.ln2(self.cnn2(inputs)))
+        x = torch.cat([x1, x2], -1)
+        x = self.flatten(x)
+        x = F.gelu(self.cnn_out(x))
+        x = self.dropout_cnn(x)
 
-    def training_step(self)
+        # FCN
+        t = self.fc1_act(self.fc1(x))
+        t = self.fc2_act(self.fc2(t))
+        x = self.layernorm_fcn(x + t)
+        x = self.drop_fcn(x)
+
+        # Classification output
+        cls_out = self.cls_out(x)
+
+        # Regression output
+        bi_cls = (cls_out > 0.5).long()
+        cls_embed = self.cls_embed(bi_cls)
+        rgs_out = self.layernorm_rgs(cls_out + cls_embed)
+        rgs_out = self.rgs_out(rgs_out)
+
+        return cls_out, rgs_out
+
+    def loss(self, inputs, labels):
+        cls_out, rgs_out = inputs
+        cls_true, rgs_true = labels
+
+    def training_step(self, batch, batch_idx):
+        inputs, labels = batch
+        outs = self(inputs)
+        loss = self.loss(outs, labels)
+
+
 
 
 def read_data(path='/drive/MyDrive/samples_approxerror_equinor_PIG_010720.mat'):
