@@ -1,14 +1,12 @@
 import pandas as pd, numpy as np, tensorflow as tf, tensorflow.keras as K
 import h5py
 import matplotlib.pyplot as plt
-import sklearn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 import pytorch_lightning as pl
 
-from sklearn.metrics import classification_report
 
 
 class BruceModel(pl.LightningModule):
@@ -20,9 +18,9 @@ class BruceModel(pl.LightningModule):
         self.avgpool1 = nn.AvgPool1d(8)
         self.cnn2 = nn.Conv1d(1, 8, 16, padding='same')
         self.ln2 = nn.LayerNorm(524)
-        self.avgpool2= nn.AvgPool1d(16)
+        self.avgpool2= nn.AvgPool1d(8)
         self.flatten = nn.Flatten()
-        self.cnn_out = nn.Linear(524*2, 64)
+        self.cnn_out = nn.Linear(1040, 64)
         self.dropout_cnn = nn.Dropout(0.1)
 
         # FCN Layer
@@ -39,12 +37,20 @@ class BruceModel(pl.LightningModule):
         # Regression output
         self.cls_embed = nn.Embedding(2, 64, padding_idx=0)
         self.layernorm_rgs = nn.LayerNorm(64)
-        self.rgs_out = nn.Linear(1)
+        self.rgs_out = nn.Linear(64, 1)
+
+        # Loss function
+        self.cls_loss_fn = nn.BCEWithLogitsLoss(torch.tensor([0.85, 0.15]))
+        self.rgs_loss_fn = nn.L1Loss()
+
+        # Loss weights
+        self.loss_weights = torch.tensor(LOSS_WEIGHTS).float()
 
     def forward(self, inputs):
+        b, f = inputs.shape
         # CNN forward
-        x1 = self.avgpool1(self.ln1(self.cnn1(inputs)))
-        x2 = self.avgpool2(self.ln2(self.cnn2(inputs)))
+        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f))))
+        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f))))
         x = torch.cat([x1, x2], -1)
         x = self.flatten(x)
         x = F.gelu(self.cnn_out(x))
@@ -70,13 +76,15 @@ class BruceModel(pl.LightningModule):
     def loss(self, inputs, labels):
         cls_out, rgs_out = inputs
         cls_true, rgs_true = labels
+        return self.cls_loss_fn(cls_out, cls_true), self.rgs_loss_fn(rgs_out, rgs_true)
 
     def training_step(self, batch, batch_idx):
         inputs, labels = batch
         outs = self(inputs)
-        loss = self.loss(outs, labels)
+        cls_loss, rgs_loss = self.loss(outs, labels)
 
-
+        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        loss.backward()outs
 
 
 def read_data(path='/drive/MyDrive/samples_approxerror_equinor_PIG_010720.mat'):
@@ -141,6 +149,8 @@ CLASS_W = [{0: 0.85, 1: 0.15}, None]
 METRICS = ['accuracy', K.metrics.AUC()]
 
 if __name__ == '__main__':
+    model = BruceModel()
+
     f = read_data()
     data = f['Samples_big'][:]
 
