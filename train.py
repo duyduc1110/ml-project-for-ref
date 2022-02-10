@@ -1,5 +1,5 @@
 import pandas as pd, numpy as np, tensorflow as tf, tensorflow.keras as K
-import h5py
+import h5py, logging, argparse
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -9,9 +9,12 @@ import pytorch_lightning as pl
 
 
 
-class BruceModel(pl.LightningModule):
-    def __init__(self):
+class BruceCNNModel(pl.LightningModule):
+    def __init__(self, param1=1, param2=2):
         super().__init__()
+        self.save_hyperparameters()
+        self.save_hyperparameters({'duc': 1, 'bon':2})
+        
         # CNN Layer
         self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
         self.ln1 = nn.LayerNorm(524)
@@ -40,7 +43,7 @@ class BruceModel(pl.LightningModule):
         self.rgs_out = nn.Linear(64, 1)
 
         # Loss function
-        self.cls_loss_fn = nn.BCEWithLogitsLoss(torch.tensor([0.85, 0.15]))
+        self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
         self.rgs_loss_fn = nn.L1Loss()
 
         # Loss weights
@@ -84,7 +87,7 @@ class BruceModel(pl.LightningModule):
         cls_loss, rgs_loss = self.loss(outs, labels)
 
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss.backward()outs
+        return loss
 
 
 def read_data(path='/drive/MyDrive/samples_approxerror_equinor_PIG_010720.mat'):
@@ -101,42 +104,34 @@ def preprocessing_data(arr, normalize=True):
         return (arr - arr.mean()) / arr.std()
 
 
-def scheduler(epoch, lr):
-    if epoch % 2 == 0 and epoch >= SCHEDULER_EPOCH:
-        return lr * SCHEDULER_RATE
-    return lr
+def get_data(path):
+    f = read_data()
+    data = f['Samples_big'][:]
+
+    train_rgs_labels = data[:, 526].reshape(-1, 1)
+    train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
+    train_inputs = preprocessing_data(data[:, :524], True)
+
+    return train_inputs, train_cls_labels, train_rgs_labels
 
 
-def build_model():
-    inputs = K.layers.Input(shape=(524, 1), name='inputs')
+def get_args():
+    model_parser = argparse.ArgumentParser()
 
-    # CNN Layer
-    x1 = K.layers.Conv1D(10, 8, padding='same')(inputs)
-    x1 = K.layers.BatchNormalization(axis=-2)(x1)
-    x1 = K.layers.MaxPool2D((5, 2), padding='same')(tf.expand_dims(x1, -1))
+    # Model argumentss
+    model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
+    model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
+    model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
+    model_parser.add_argument('--data_path', default='/drive/MyDrive/', type=str, help='Data path')
 
-    x2 = K.layers.Conv1D(10, 16, padding='same')(inputs)
-    x2 = K.layers.BatchNormalization(axis=-2)(x2)
-    x2 = K.layers.MaxPool2D((5, 2), padding='same')(tf.expand_dims(x2, -1))
+    # Trainer arguments
+    model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
+    model_parser.add_argument('--training_step', default=100000, type=int, help='Training steps')
+    model_parser.add_argument('--batch_size', default=64, type=int, help='Batch size per device')
+    model_parser.add_argument('--log_step', default=100, type=int, help='Steps per log')
 
-    x = K.layers.concatenate([x1, x2], axis=-2)
-    x = K.layers.Flatten()(x)
-    x = K.layers.BatchNormalization()(x)
-    x = K.layers.Dropout(0.1)(x)
-
-    # MLP Layer
-    x = K.layers.Dense(256, activation=tf.nn.gelu, name='dense1')(x)
-    x = K.layers.Dropout(0.2, name='dropout1')(x)
-    x = K.layers.Dense(32, activation=tf.nn.gelu, name='dense2')(x)
-    x = K.layers.Dropout(0.2, name='dropout2')(x)
-
-    # Output layers
-    cls_out = K.layers.Dense(1, activation=tf.nn.sigmoid, name='cls_output')(x)
-    rgs_out = K.layers.Dense(1, activation=tf.nn.sigmoid, name='rgs_output')(x)
-
-    model = K.Model(inputs=inputs, outputs=[cls_out, rgs_out])
-
-    return model
+    args = model_parser.parse_args()
+    return args
 
 
 INIT_LR = 1e-3
@@ -148,40 +143,17 @@ SCHEDULER_RATE = 0.9
 CLASS_W = [{0: 0.85, 1: 0.15}, None]
 METRICS = ['accuracy', K.metrics.AUC()]
 
+
 if __name__ == '__main__':
-    model = BruceModel()
+    # Get arguments & logger
+    args = get_args()
+    logging.basicConfig(level=args.logging_level)
+    logger = logging.getLogger('model')
 
-    f = read_data()
-    data = f['Samples_big'][:]
+    # Generate model
+    model = BruceCNNModel()
 
-    train_rgs_labels = data[:, 526].reshape(-1, 1)
-    train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
-    train_inputs = preprocessing_data(data[:, :524], True)
+    # Get data
+    train_inputs, train_cls_labels, train_rgs_labels = get_data(args.data_path)
 
-    scheduler = K.callbacks.LearningRateScheduler(scheduler)
-
-    model = build_model()
-    model.summary()
-
-    CLASS_W = {'cls_output': {0: 0.85, 1: 0.15}}
-    model.compile(
-        optimizer=K.optimizers.Adam(INIT_LR),
-        loss=[K.losses.binary_crossentropy, K.losses.MeanAbsolutePercentageError()],
-        loss_weights=LOSS_WEIGHTS,
-        metrics=METRICS,
-    )
-
-    hist = model.fit(
-        x=train_inputs,
-        y=[train_cls_labels, train_rgs_labels],
-        callbacks=[scheduler],
-        batch_size=BATCH_SIZE,
-        epochs=EPOCH,
-        validation_split=0.3,
-        class_weight=CLASS_W
-    )
-
-    plt.plot(hist.history['auc'], label='Training AUC')
-    plt.plot(hist.history['val_auc'], label='Val AUC')
-    plt.legend()
-    plt.show()
+    pass
