@@ -1,10 +1,9 @@
-import pandas as pd, numpy as np, tensorflow as tf, tensorflow.keras as K
-import h5py, logging, argparse, os
-import matplotlib.pyplot as plt
+import pandas as pd, numpy as np
+import h5py, logging, argparse, sklearn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 import pytorch_lightning as pl
 
 
@@ -89,6 +88,25 @@ class BruceCNNModel(pl.LightningModule):
         return loss
 
 
+class BruceDataset(Dataset):
+    def __init__(self, inputs, cls_labels=None, rgs_labels=None):
+        super().__init__()
+        self.inputs = inputs
+        self.cls_labels = cls_labels
+        self.rgs_labels = rgs_labels
+
+    def __len__(self):
+        return self.inputs.shape[0]
+
+    def __getitem__(self, idx):
+        if self.cls_labels in None:
+            return torch.tensor(self.inputs[idx])
+        else:
+            return torch.tensor(self.inputs[idx]), \
+                   torch.tensor(self.cls_labels[idx]), \
+                   torch.tensor(self.rgs_labels[idx])
+
+
 def read_data(path='data.mat'):
     f = h5py.File(path)
     return f
@@ -135,12 +153,10 @@ def get_args():
 
 INIT_LR = 1e-3
 LOSS_WEIGHTS = [1, 1]
-BATCH_SIZE = 2048
 EPOCH = 100
 SCHEDULER_EPOCH = 20
 SCHEDULER_RATE = 0.9
 CLASS_W = [{0: 0.85, 1: 0.15}, None]
-METRICS = ['accuracy', K.metrics.AUC()]
 
 
 if __name__ == '__main__':
@@ -155,5 +171,11 @@ if __name__ == '__main__':
     # Get data
     train_inputs, train_cls_labels, train_rgs_labels = get_data(args.data_path)
     print(train_inputs.shape, train_cls_labels.shape, train_rgs_labels.shape)
+
+    t = TensorDataset()
+
+    # Create Dataloader
+    train_dataset = BruceDataset(inputs=train_inputs, cls_labels=train_cls_labels, rgs_labels=train_rgs_labels)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
     pass
