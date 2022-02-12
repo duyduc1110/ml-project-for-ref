@@ -99,7 +99,7 @@ class BruceDataset(Dataset):
         return self.inputs.shape[0]
 
     def __getitem__(self, idx):
-        if self.cls_labels in None:
+        if self.cls_labels is None:
             return torch.tensor(self.inputs[idx])
         else:
             return torch.tensor(self.inputs[idx]), \
