@@ -1,5 +1,5 @@
 import pandas as pd, numpy as np, tensorflow as tf, tensorflow.keras as K
-import h5py, logging, argparse
+import h5py, logging, argparse, os
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -90,7 +90,7 @@ class BruceCNNModel(pl.LightningModule):
         return loss
 
 
-def read_data(path='/drive/MyDrive/samples_approxerror_equinor_PIG_010720.mat'):
+def read_data(path='data.mat'):
     f = h5py.File(path)
     return f
 
