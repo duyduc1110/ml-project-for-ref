@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, Dataset
 import pytorch_lightning as pl
 
 
-
 class BruceCNNModel(pl.LightningModule):
     def __init__(self, param1=1, param2=2):
         super().__init__()
@@ -155,5 +154,6 @@ if __name__ == '__main__':
 
     # Get data
     train_inputs, train_cls_labels, train_rgs_labels = get_data(args.data_path)
+    print(train_inputs.shape, train_cls_labels.shape, train_rgs_labels.shape)
 
     pass
