@@ -137,12 +137,12 @@ def split_data(x, y1, y2):
     return train_test_split(x, y1, y2, test_size=0.2, stratify=y1)
 
 
-def get_data(path, sample=False):
+def get_data(path, no_sample):
     f = read_data(path)
-    if sample:
-        data = f['Samples_big'][:2000]
-    else:
+    if no_sample:
         data = f['Samples_big'][:]
+    else:
+        data = f['Samples_big'][:2000]
 
     train_rgs_labels = data[:, 526].reshape(-1, 1)
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
@@ -159,7 +159,7 @@ def get_args():
     model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
     model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
-    model_parser.add_argument('--sample', default=True, type=bool, help='Sample to test data and model')
+    model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     model = BruceCNNModel()
 
     # Get data
-    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.sample)
+    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.no_sample)
 
     # Create Dataloader
     train_dataset = TensorDataset(torch.tensor(train_x),
