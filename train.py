@@ -157,7 +157,7 @@ def get_args():
     model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
     model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
-    model_parser.add_argument('--sample', default=True, type=bool, help='Sample to test data and model')
+    model_parser.add_argument('--sample', default=False, type=bool, help='Sample to test data and model')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
