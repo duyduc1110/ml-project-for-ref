@@ -1,10 +1,14 @@
 import pandas as pd, numpy as np
-import h5py, logging, argparse, sklearn
-import torch
+import h5py, logging, argparse
+import torch, torchmetrics
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, TensorDataset
 import pytorch_lightning as pl
+
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+from sklearn.model_selection import train_test_split
+from pytorch_lightning.loggers import WandbLogger
+from datetime import datetime
 
 
 class BruceCNNModel(pl.LightningModule):
@@ -47,11 +51,15 @@ class BruceCNNModel(pl.LightningModule):
         # Loss weights
         self.loss_weights = torch.tensor(LOSS_WEIGHTS).float()
 
+        # Metrics to log
+        self.acc = torchmetrics.Accuracy()
+        self.auc = torchmetrics.AUC()
+
     def forward(self, inputs):
         b, f = inputs.shape
         # CNN forward
-        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f))))
-        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f))))
+        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f).float())))
+        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f).float())))
         x = torch.cat([x1, x2], -1)
         x = self.flatten(x)
         x = F.gelu(self.cnn_out(x))
@@ -74,18 +82,20 @@ class BruceCNNModel(pl.LightningModule):
 
         return cls_out, rgs_out
 
-    def loss(self, inputs, labels):
+    def loss(self, inputs, cls_true, rgs_true):
         cls_out, rgs_out = inputs
-        cls_true, rgs_true = labels
-        return self.cls_loss_fn(cls_out, cls_true), self.rgs_loss_fn(rgs_out, rgs_true)
+        return self.cls_loss_fn(cls_out, cls_true.float()), self.rgs_loss_fn(rgs_out, rgs_true)
 
     def training_step(self, batch, batch_idx):
-        inputs, labels = batch
+        inputs, cls_labels, rgs_labels = batch
         outs = self(inputs)
-        cls_loss, rgs_loss = self.loss(outs, labels)
+        cls_loss, rgs_loss = self.loss(outs, cls_labels, rgs_labels)
 
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
         return loss
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=1e-3)
 
 
 class BruceDataset(Dataset):
@@ -107,7 +117,7 @@ class BruceDataset(Dataset):
                    torch.tensor(self.rgs_labels[idx])
 
 
-def read_data(path='data.mat'):
+def read_data(path):
     f = h5py.File(path)
     return f
 
@@ -121,15 +131,22 @@ def preprocessing_data(arr, normalize=True):
         return (arr - arr.mean()) / arr.std()
 
 
-def get_data(path):
-    f = read_data()
-    data = f['Samples_big'][:]
+def split_data(x, y1, y2):
+    return train_test_split(x, y1, y2, test_size=0.2, stratify=y1)
+
+
+def get_data(path, sample=False):
+    f = read_data(path)
+    if sample:
+        data = f['Samples_big'][:100]
+    else:
+        data = f['Samples_big'][:]
 
     train_rgs_labels = data[:, 526].reshape(-1, 1)
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
     train_inputs = preprocessing_data(data[:, :524], True)
 
-    return train_inputs, train_cls_labels, train_rgs_labels
+    return split_data(train_inputs, train_cls_labels, train_rgs_labels)
 
 
 def get_args():
@@ -139,13 +156,16 @@ def get_args():
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
     model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
     model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
-    model_parser.add_argument('--data_path', default='/drive/MyDrive/', type=str, help='Data path')
+    model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
+    model_parser.add_argument('--sample', default=True, type=bool, help='Sample to test data and model')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
     model_parser.add_argument('--training_step', default=100000, type=int, help='Training steps')
     model_parser.add_argument('--batch_size', default=64, type=int, help='Batch size per device')
     model_parser.add_argument('--log_step', default=100, type=int, help='Steps per log')
+    model_parser.add_argument('--gpu', default=0, type=int, help='Use GPUs')
+    model_parser.add_argument('--epoch', default=10, type=int, help='Number of epoch')
 
     args = model_parser.parse_args()
     return args
@@ -157,6 +177,7 @@ EPOCH = 100
 SCHEDULER_EPOCH = 20
 SCHEDULER_RATE = 0.9
 CLASS_W = [{0: 0.85, 1: 0.15}, None]
+DATETIME_NOW = datetime.now().strftime('%Y-%m-%d_%H-%M')
 
 
 if __name__ == '__main__':
@@ -169,13 +190,31 @@ if __name__ == '__main__':
     model = BruceCNNModel()
 
     # Get data
-    train_inputs, train_cls_labels, train_rgs_labels = get_data(args.data_path)
-    print(train_inputs.shape, train_cls_labels.shape, train_rgs_labels.shape)
-
-    t = TensorDataset()
+    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.sample)
 
     # Create Dataloader
-    train_dataset = BruceDataset(inputs=train_inputs, cls_labels=train_cls_labels, rgs_labels=train_rgs_labels)
+    train_dataset = TensorDataset(torch.tensor(train_x),
+                                   torch.tensor(train_y_cls),
+                                   torch.tensor(train_y_rgs))
+    val_dataset = TensorDataset(torch.tensor(val_x),
+                                  torch.tensor(val_y_cls),
+                                  torch.tensor(val_y_rgs))
+    #train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
+
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False)
+
+    # Init Trainer
+    wandb_logger = WandbLogger(project='Rocsole_DILI', name=f'CNN-{DATETIME_NOW}')
+    wandb_logger.watch(model, log='all')
+
+    trainer = pl.Trainer(
+        logger=wandb_logger,
+        gpus=args.gpu,
+        log_every_n_steps=args.log_step,
+        max_epochs=args.epoch,
+    )
+
+    trainer.fit(model, train_dataloader, val_dataloader)
 
     pass
