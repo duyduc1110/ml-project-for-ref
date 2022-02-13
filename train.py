@@ -6,8 +6,10 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.profiler import profile, record_function, ProfilerActivity
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.profiler import AdvancedProfiler
 from datetime import datetime
 
 
@@ -75,7 +77,7 @@ class BruceCNNModel(pl.LightningModule):
         cls_out = self.cls_out(x)
 
         # Regression output
-        bi_cls = (cls_out > 0.5).long()
+        bi_cls = (cls_out > 0.5).squeeze().long()
         cls_embed = self.cls_embed(bi_cls)
         rgs_out = self.layernorm_rgs(cls_out + cls_embed)
         rgs_out = self.rgs_out(rgs_out)
@@ -138,7 +140,7 @@ def split_data(x, y1, y2):
 def get_data(path, sample=False):
     f = read_data(path)
     if sample:
-        data = f['Samples_big'][:100]
+        data = f['Samples_big'][:2000]
     else:
         data = f['Samples_big'][:]
 
@@ -157,12 +159,12 @@ def get_args():
     model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
     model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
-    model_parser.add_argument('--sample', default=False, type=bool, help='Sample to test data and model')
+    model_parser.add_argument('--sample', default=True, type=bool, help='Sample to test data and model')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
     model_parser.add_argument('--training_step', default=100000, type=int, help='Training steps')
-    model_parser.add_argument('--batch_size', default=64, type=int, help='Batch size per device')
+    model_parser.add_argument('--batch_size', default=128, type=int, help='Batch size per device')
     model_parser.add_argument('--log_step', default=100, type=int, help='Steps per log')
     model_parser.add_argument('--gpu', default=0, type=int, help='Use GPUs')
     model_parser.add_argument('--epoch', default=10, type=int, help='Number of epoch')
@@ -204,15 +206,20 @@ if __name__ == '__main__':
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False)
 
-    # Init Trainer
+    # Init Logger
     wandb_logger = WandbLogger(project='Rocsole_DILI', name=f'CNN-{DATETIME_NOW}')
     wandb_logger.watch(model, log='all')
 
+    # Init Profiler
+    profiler = AdvancedProfiler()
+
+    # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
         logger=wandb_logger,
         gpus=args.gpu,
         log_every_n_steps=args.log_step,
         max_epochs=args.epoch,
+        profiler=profiler,
     )
 
     trainer.fit(model, train_dataloader, val_dataloader)
