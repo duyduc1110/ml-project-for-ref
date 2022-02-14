@@ -55,9 +55,9 @@ class BruceCNNModel(pl.LightningModule):
 
         # Metrics to log
         self.train_acc = torchmetrics.Accuracy()
-        self.train_auc = torchmetrics.AUC(reorder=True)
+        self.train_auc = torchmetrics.AUROC(pos_label=1)
         self.val_acc = torchmetrics.Accuracy()
-        self.val_auc = torchmetrics.AUC(reorder=True)
+        self.val_auc = torchmetrics.AUROC(pos_label=1)
 
     def forward(self, inputs):
         b, f = inputs.shape
@@ -97,8 +97,8 @@ class BruceCNNModel(pl.LightningModule):
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
 
         # Calculate train metrics
-        self.train_acc(cls_out, cls_labels.long())
-        self.train_auc(cls_out, cls_labels.long())
+        self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
+        self.train_auc(torch.sigmoid(cls_out), cls_labels.long())
 
         # Log train metrics
         self.log('train/loss', loss, prog_bar=True)
@@ -115,8 +115,8 @@ class BruceCNNModel(pl.LightningModule):
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
 
         # Calculate train metrics
-        self.val_acc(cls_out, cls_labels.long())
-        self.val_auc(cls_out, cls_labels.long())
+        self.val_acc(torch.sigmoid(cls_out), cls_labels.long())
+        self.val_auc(torch.sigmoid(cls_out), cls_labels.long())
 
         # Log train metrics
         self.log('val/loss', loss)
