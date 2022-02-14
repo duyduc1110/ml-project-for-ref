@@ -16,7 +16,7 @@ from datetime import datetime
 class BruceCNNModel(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
-        self.save_hyperparameters()
+        self.args = args
         self.save_hyperparameters(args)
         
         # CNN Layer
@@ -124,7 +124,7 @@ class BruceCNNModel(pl.LightningModule):
         self.log('val/auc', self.val_auc)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-3)
+        return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
 
 
 class BruceDataset(Dataset):
