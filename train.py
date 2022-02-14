@@ -14,10 +14,10 @@ from datetime import datetime
 
 
 class BruceCNNModel(pl.LightningModule):
-    def __init__(self, param1=1, param2=2):
+    def __init__(self, args):
         super().__init__()
         self.save_hyperparameters()
-        self.save_hyperparameters({'duc': 1, 'bon':2})
+        self.save_hyperparameters(args)
         
         # CNN Layer
         self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
@@ -54,8 +54,10 @@ class BruceCNNModel(pl.LightningModule):
         self.loss_weights = torch.tensor(LOSS_WEIGHTS).float()
 
         # Metrics to log
-        self.acc = torchmetrics.Accuracy()
-        self.auc = torchmetrics.AUC()
+        self.train_acc = torchmetrics.Accuracy()
+        self.train_auc = torchmetrics.AUC(reorder=True)
+        self.val_acc = torchmetrics.Accuracy()
+        self.val_auc = torchmetrics.AUC(reorder=True)
 
     def forward(self, inputs):
         b, f = inputs.shape
@@ -84,17 +86,42 @@ class BruceCNNModel(pl.LightningModule):
 
         return cls_out, rgs_out
 
-    def loss(self, inputs, cls_true, rgs_true):
-        cls_out, rgs_out = inputs
+    def loss(self, cls_out, rgs_out, cls_true, rgs_true):
         return self.cls_loss_fn(cls_out, cls_true.float()), self.rgs_loss_fn(rgs_out, rgs_true)
 
     def training_step(self, batch, batch_idx):
         inputs, cls_labels, rgs_labels = batch
-        outs = self(inputs)
-        cls_loss, rgs_loss = self.loss(outs, cls_labels, rgs_labels)
+        cls_out, rgs_out = self(inputs)
 
+        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+
+        # Calculate train metrics
+        self.train_acc(cls_out, cls_labels.long())
+        self.train_auc(cls_out, cls_labels.long())
+
+        # Log train metrics
+        self.log('train/loss', loss, prog_bar=True)
+        self.log('train/acc', self.train_acc, on_epoch=True, prog_bar=True)
+        self.log('train/auc', self.train_auc, on_epoch=True, prog_bar=True)
+
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        inputs, cls_labels, rgs_labels = batch
+        cls_out, rgs_out = self(inputs)
+
+        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
+        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+
+        # Calculate train metrics
+        self.val_acc(cls_out, cls_labels.long())
+        self.val_auc(cls_out, cls_labels.long())
+
+        # Log train metrics
+        self.log('val/loss', loss)
+        self.log('val/acc', self.val_acc)
+        self.log('val/auc', self.val_auc)
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=1e-3)
@@ -174,7 +201,7 @@ def get_args():
 
 
 INIT_LR = 1e-3
-LOSS_WEIGHTS = [1, 1]
+LOSS_WEIGHTS = [0.8, 0.2]
 EPOCH = 100
 SCHEDULER_EPOCH = 20
 SCHEDULER_RATE = 0.9
@@ -189,7 +216,7 @@ if __name__ == '__main__':
     logger = logging.getLogger('model')
 
     # Generate model
-    model = BruceCNNModel()
+    model = BruceCNNModel(args)
 
     # Get data
     train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.no_sample)
@@ -204,7 +231,7 @@ if __name__ == '__main__':
     #train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False)
+    val_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Init Logger
     wandb_logger = WandbLogger(project='Rocsole_DILI', name=f'CNN-{DATETIME_NOW}')
@@ -216,10 +243,11 @@ if __name__ == '__main__':
     # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
         logger=wandb_logger,
+        profiler=profiler,
         gpus=args.gpu,
         log_every_n_steps=args.log_step,
         max_epochs=args.epoch,
-        profiler=profiler,
+        deterministic=True,
     )
 
     trainer.fit(model, train_dataloader, val_dataloader)
