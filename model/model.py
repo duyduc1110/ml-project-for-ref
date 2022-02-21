@@ -141,8 +141,8 @@ class BruceCNNModel(pl.LightningModule):
 
         # Log train metrics
         self.log('train/loss', loss.item())
-        self.log('train/acc', self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('train/auc', self.train_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('train/acc', self.train_acc)
+        self.log('train/auc', self.train_auc)
 
         return loss
 
@@ -153,6 +153,10 @@ class BruceCNNModel(pl.LightningModule):
         cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
 
+        # Log loss
+        self.log('val/cls_loss', cls_loss.item(), prog_bar=True)
+        self.log('val/rgs_loss', rgs_loss.item(), prog_bar=True)
+
         # Calculate train metrics
         self.val_acc(torch.sigmoid(cls_out), cls_labels.long())
         self.val_auc(torch.sigmoid(cls_out), cls_labels.long())
@@ -161,8 +165,6 @@ class BruceCNNModel(pl.LightningModule):
         self.log('val/loss', loss)
         self.log('val/acc', self.val_acc)
         self.log('val/auc', self.val_auc)
-
-        return cls_out, rgs_out, cls_labels, rgs_labels
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
