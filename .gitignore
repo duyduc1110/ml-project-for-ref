@@ -3,7 +3,8 @@
 /*
 
 # Not these directories
-
+!model/
+!utils/
 
 # Not these files
 !.gitignore
