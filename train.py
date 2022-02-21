@@ -76,6 +76,7 @@ def get_args():
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
     model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
     model_parser.add_argument('--num_lstm_layer', default=1, type=int, help='Number of LSTM layer')
+    model_parser.add_argument('--cls_w', default=0.8, type=float, help='Number of LSTM layer')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
@@ -105,7 +106,6 @@ def get_predict(model, dataloaders):
 
 
 INIT_LR = 1e-3
-LOSS_WEIGHTS = [0.7, 0.3]
 EPOCH = 100
 SCHEDULER_EPOCH = 20
 SCHEDULER_RATE = 0.9
@@ -116,7 +116,7 @@ DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
 if __name__ == '__main__':
     # Get arguments & logger
     args = get_args()
-    args.loss_weights = LOSS_WEIGHTS # set loss weights
+    args.loss_weights = [args.cls_w, 1 - args.cls_w] # set loss weights
     logging.basicConfig(level=args.logging_level)
     logger = logging.getLogger('model')
 
