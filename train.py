@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
     # Init Callbacks
     profiler = AdvancedProfiler()
-    model_checker = ModelCheckpoint(monitor='train/rgs_loss',
+    model_checker = ModelCheckpoint(monitor='val/rgs_loss',
                                     mode='min',
                                     dirpath='./model_checkpoint/',
                                     filename=MODEL_NAME,
