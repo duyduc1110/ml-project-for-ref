@@ -5,11 +5,129 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
-from model import BruceCNNModel, BruceRNNModel
+#from model import BruceCNNModel, BruceRNNModel
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profiler import AdvancedProfiler
 from datetime import datetime
+
+
+class BruceCNNModel(pl.LightningModule):
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+        self.save_hyperparameters(args)
+
+        # CNN Layer
+        self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
+        self.ln1 = nn.LayerNorm(524)
+        self.avgpool1 = nn.AvgPool1d(8)
+        self.cnn2 = nn.Conv1d(1, 8, 16, padding='same')
+        self.ln2 = nn.LayerNorm(524)
+        self.avgpool2 = nn.AvgPool1d(8)
+        self.flatten = nn.Flatten()
+        self.cnn_out = nn.Linear(1040, 64)
+        self.dropout_cnn = nn.Dropout(0.1)
+
+        # FCN Layer
+        self.fc1 = nn.Linear(64, 512)
+        self.fc1_act = nn.GELU()
+        self.fc2 = nn.Linear(512, 64)
+        self.fc2_act = nn.GELU()
+        self.layernorm_fcn = nn.LayerNorm(64)
+        self.drop_fcn = nn.Dropout(0.1)
+
+        # Cls output
+        self.cls_out = nn.Linear(64, 1)
+
+        # Regression output
+        self.cls_embed = nn.Embedding(2, 64, padding_idx=0)
+        self.layernorm_rgs = nn.LayerNorm(64)
+        self.rgs_out = nn.Linear(64, 1)
+
+        # Loss function
+        self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
+        self.rgs_loss_fn = nn.MSELoss()
+
+        # Loss weights
+        self.loss_weights = torch.tensor(args.loss_weights).float()
+
+        # Metrics to log
+        self.train_acc = torchmetrics.Accuracy()
+        self.train_auc = torchmetrics.AUROC(pos_label=1)
+        self.val_acc = torchmetrics.Accuracy()
+        self.val_auc = torchmetrics.AUROC(pos_label=1)
+
+    def forward(self, inputs):
+        b, f = inputs.shape
+        # CNN forward
+        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f).float())))
+        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f).float())))
+        x = torch.cat([x1, x2], -1)
+        x = self.flatten(x)
+        x = F.gelu(self.cnn_out(x))
+        x = self.dropout_cnn(x)
+
+        # FCN
+        t = self.fc1_act(self.fc1(x))
+        t = self.fc2_act(self.fc2(t))
+        x = self.layernorm_fcn(x + t)
+        x = self.drop_fcn(x)
+
+        # Classification output
+        cls_out = self.cls_out(x)
+
+        # Regression output
+        bi_cls = (cls_out > 0.5).squeeze().long()
+        cls_embed = self.cls_embed(bi_cls)
+        rgs_out = self.layernorm_rgs(cls_out + cls_embed)
+        rgs_out = self.rgs_out(rgs_out)
+
+        return cls_out, rgs_out
+
+    def loss(self, cls_out, rgs_out, cls_true, rgs_true):
+        return self.cls_loss_fn(cls_out, cls_true.float()), self.rgs_loss_fn(rgs_out, rgs_true)
+
+    def training_step(self, batch, batch_idx):
+        inputs, cls_labels, rgs_labels = batch
+        cls_out, rgs_out = self(inputs)
+
+        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
+        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+
+        # Log loss
+        self.log('train/cls_loss', cls_loss.item(), prog_bar=True)
+        self.log('train/rgs_loss', rgs_loss.item(), prog_bar=True)
+
+        # Calculate train metrics
+        self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
+        self.train_auc(torch.sigmoid(cls_out), cls_labels.long())
+
+        # Log train metrics
+        self.log('train/loss', loss.item())
+        self.log('train/acc', self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('train/auc', self.train_auc, on_step=False, on_epoch=True, prog_bar=True)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        inputs, cls_labels, rgs_labels = batch
+        cls_out, rgs_out = self(inputs)
+
+        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
+        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+
+        # Calculate train metrics
+        self.val_acc(torch.sigmoid(cls_out), cls_labels.long())
+        self.val_auc(torch.sigmoid(cls_out), cls_labels.long())
+
+        # Log train metrics
+        self.log('val/loss', loss)
+        self.log('val/acc', self.val_acc)
+        self.log('val/auc', self.val_auc)
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
 
 
 class BruceDataset(Dataset):
@@ -56,7 +174,7 @@ def get_data(path, no_sample):
     else:
         data = f['Samples_big'][:2000]
 
-    train_rgs_labels = data[:, 526].reshape(-1, 1)
+    train_rgs_labels = data[:, 526].reshape(-1, 1) * 10
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
     train_inputs = preprocessing_data(data[:, :524], True)
 
@@ -75,7 +193,6 @@ def get_args():
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
     model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
     model_parser.add_argument('--num_lstm_layer', default=1, type=int, help='Number of LSTM layer')
-
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
@@ -112,12 +229,12 @@ if __name__ == '__main__':
     train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.no_sample)
 
     # Create Dataloader
-    train_dataset = TensorDataset(torch.tensor(train_x),
-                                   torch.tensor(train_y_cls),
-                                   torch.tensor(train_y_rgs))
-    val_dataset = TensorDataset(torch.tensor(val_x),
-                                  torch.tensor(val_y_cls),
-                                  torch.tensor(val_y_rgs))
+    train_dataset = TensorDataset(torch.FloatTensor(train_x),
+                                  torch.FloatTensor(train_y_cls),
+                                  torch.FloatTensor(train_y_rgs))
+    val_dataset = TensorDataset(torch.FloatTensor(val_x),
+                                torch.FloatTensor(val_y_cls),
+                                torch.FloatTensor(val_y_rgs))
     #train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
