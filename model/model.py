@@ -83,10 +83,10 @@ class BruceCNNModel(pl.LightningModule):
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
-        self.rgs_loss_fn = nn.MSELoss()
+        self.rgs_loss_fn = nn.MSELoss() if self.args.rgs_loss == 'mse' else nn.L1Loss()
 
         # Loss weights
-        self.loss_weights = torch.tensor(args.loss_weights).float()
+        self.loss_weights = torch.tensor(self.args.loss_weights).float()
 
         # Metrics to log
         self.train_acc = torchmetrics.Accuracy()

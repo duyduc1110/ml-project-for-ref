@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profiler import AdvancedProfiler
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import datetime
 
 
@@ -70,7 +71,7 @@ def get_args():
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
     model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
-    model_parser.add_argument('--run_name', default=None, type=str, help="Run name to put in WanDB")
+    model_parser.add_argument('--rgs_loss', default='mae', type=str, help="Regression loss, default is MAE")
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
@@ -84,7 +85,7 @@ def get_args():
     model_parser.add_argument('--batch_size', default=128, type=int, help='Batch size per device')
     model_parser.add_argument('--log_step', default=100, type=int, help='Steps per log')
     model_parser.add_argument('--gpu', default=0, type=int, help='Use GPUs')
-    model_parser.add_argument('--epoch', default=5, type=int, help='Number of epoch')
+    model_parser.add_argument('--epoch', default=10, type=int, help='Number of epoch')
 
     args = model_parser.parse_args()
     return args
@@ -145,6 +146,10 @@ if __name__ == '__main__':
 
     # Init Callbacks
     profiler = AdvancedProfiler()
+    early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
+                                        mode='min',
+                                        patience=8,
+                                        verbose=True)
     model_checker = ModelCheckpoint(monitor='val/rgs_loss',
                                     mode='min',
                                     dirpath='./model_checkpoint/',
@@ -154,7 +159,7 @@ if __name__ == '__main__':
     # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
         logger=wandb_logger,
-        callbacks=[model_checker],
+        callbacks=[early_stop_callback, model_checker],
         #profiler=profiler,
         gpus=args.gpu,
         log_every_n_steps=args.log_step,
@@ -163,7 +168,7 @@ if __name__ == '__main__':
     )
 
     trainer.fit(model, train_dataloader, val_dataloader)
-    model_checker.best_model_path
+    model.load_from_checkpoint(model_checker.best_model_path, strict=False, args=args)
 
     y_trues, predicts = get_predict(model, (train_dataloader, val_dataloader))
     df = pd.DataFrame(np.array([y_trues, predicts]).T, columns=['True', 'Predicted'])
