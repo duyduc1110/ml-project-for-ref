@@ -58,7 +58,7 @@ def get_data(path, no_sample):
     else:
         data = f['Samples_big'][:2000]
 
-    train_rgs_labels = data[:, 526].reshape(-1, 1) * 10
+    train_rgs_labels = data[:, 526].reshape(-1, 1)
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
     train_inputs = preprocessing_data(data[:, :524], True)
 
