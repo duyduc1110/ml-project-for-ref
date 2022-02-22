@@ -156,6 +156,7 @@ class BruceCNNModel(pl.LightningModule):
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=True)
         self.log('val/rgs_loss', rgs_loss.item(), prog_bar=True)
+        self.log('val_rgs_loss', rgs_loss.item(), prog_bar=False, logger=False)
 
         # Calculate train metrics
         self.val_acc(torch.sigmoid(cls_out), cls_labels.long())

@@ -148,7 +148,7 @@ if __name__ == '__main__':
     model_checker = ModelCheckpoint(monitor='val/rgs_loss',
                                     mode='min',
                                     dirpath='./model_checkpoint/',
-                                    filename=MODEL_NAME,
+                                    filename=MODEL_NAME + '_{epoch:02d}-{val_rgs_loss:.2f}',
                                     verbose=True)
 
     # Init Pytorch Lightning Profiler
