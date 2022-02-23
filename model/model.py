@@ -28,7 +28,7 @@ class BruceCNNModule(nn.Module):
         x = self.dropout_cnn(x)
 
         return x
-        
+
 
 class BruceLSTMModule(nn.Module):
     def __init__(self, args):
@@ -48,11 +48,11 @@ class BruceLSTMModule(nn.Module):
         return x
 
 
-class BruceCNNModel(pl.LightningModule):
-    def __init__(self, args):
+class BruceModel(pl.LightningModule):
+    def __init__(self, **kwargs):
         super().__init__()
-        self.args = args
-        self.save_hyperparameters(args)
+        self.__dict__.update(kwargs)
+        self.save_hyperparameters()
 
         # CNN Layer
         self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
@@ -83,10 +83,7 @@ class BruceCNNModel(pl.LightningModule):
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
-        self.rgs_loss_fn = nn.MSELoss() if self.args.rgs_loss == 'mse' else nn.L1Loss()
-
-        # Loss weights
-        self.loss_weights = torch.tensor(self.args.loss_weights).float()
+        self.rgs_loss_fn = nn.MSELoss() if self.rgs_loss == 'mse' else nn.L1Loss()
 
         # Metrics to log
         self.train_acc = torchmetrics.Accuracy()
@@ -168,7 +165,7 @@ class BruceCNNModel(pl.LightningModule):
         self.log('val/auc', self.val_auc, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
 
 class BruceRNNModel(pl.LightningModule):

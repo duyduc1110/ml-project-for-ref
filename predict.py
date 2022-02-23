@@ -7,11 +7,6 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from model import BruceModel, BruceRNNModel
 from sklearn.model_selection import train_test_split
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.profiler import AdvancedProfiler
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from datetime import datetime
 
 
 class BruceDataset(Dataset):
@@ -62,7 +57,7 @@ def get_data(path, no_sample):
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
     train_inputs = preprocessing_data(data[:, :524], True)
 
-    return split_data(train_inputs, train_cls_labels, train_rgs_labels)
+    return train_inputs, train_cls_labels, train_rgs_labels
 
 
 def get_args():
@@ -70,7 +65,7 @@ def get_args():
 
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
-    model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
+    model_parser.add_argument('--model_path', default='model_checkpoint\CNN-20220223_0122_Bonz_epoch=01-val_rgs_loss=0.24.ckpt', type=str, help="Model path")
     model_parser.add_argument('--rgs_loss', default='mae', type=str, help="Regression loss, default is MAE")
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
@@ -90,27 +85,20 @@ def get_args():
     return args
 
 
-def get_predict(model, dataloaders):
+def get_predict(model, dataloader):
     y_trues = []
     predicts = []
+    cls = []
 
-    for dataloader in dataloaders:
-        for batch in dataloader:
-            inputs, cls_labels, rgs_labels = batch
-            cls_out, rgs_out = model(inputs)
+    for batch in dataloader:
+        inputs, cls_labels, rgs_labels = batch
+        cls_out, rgs_out = model(inputs)
 
-            y_trues.extend(rgs_labels.reshape(-1).tolist())
-            predicts.extend(rgs_out.reshape(-1).tolist())
+        y_trues.extend(rgs_labels.reshape(-1).tolist())
+        cls.extend(torch.sigmoid(cls_out.reshape(-1)).tolist())
+        predicts.extend(rgs_out.reshape(-1).tolist())
 
-    return y_trues, predicts
-
-
-INIT_LR = 1e-3
-EPOCH = 100
-SCHEDULER_EPOCH = 20
-SCHEDULER_RATE = 0.9
-CLASS_W = [{0: 0.85, 1: 0.15}, None]
-DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
+    return y_trues, cls, predicts
 
 
 if __name__ == '__main__':
@@ -121,56 +109,20 @@ if __name__ == '__main__':
     logger = logging.getLogger('model')
 
     # Generate model
-    model = BruceModel(**args.__dict__)
+    model = BruceModel.load_from_checkpoint(args.model_path)
 
     # Get data
-    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.no_sample)
+    train_inputs, train_cls_labels, train_rgs_labels = get_data(args.data_path, args.no_sample)
 
     # Create Dataloader
-    train_dataset = TensorDataset(torch.FloatTensor(train_x),
-                                  torch.FloatTensor(train_y_cls),
-                                  torch.FloatTensor(train_y_rgs))
-    val_dataset = TensorDataset(torch.FloatTensor(val_x),
-                                torch.FloatTensor(val_y_cls),
-                                torch.FloatTensor(val_y_rgs))
-    #train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
+    train_dataset = TensorDataset(torch.FloatTensor(train_inputs),
+                                  torch.FloatTensor(train_cls_labels),
+                                  torch.FloatTensor(train_rgs_labels))
 
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size)
 
-    # Init Logger
-    MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME)
-    wandb_logger.watch(model, log='all')
-
-    # Init Callbacks
-    profiler = AdvancedProfiler()
-    early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
-                                        mode='min',
-                                        patience=8,
-                                        verbose=True)
-    model_checker = ModelCheckpoint(monitor='val/rgs_loss',
-                                    mode='min',
-                                    dirpath='./model_checkpoint/',
-                                    filename=MODEL_NAME + '_{epoch:02d}-{val_rgs_loss:.2f}',
-                                    verbose=True)
-
-    # Init Pytorch Lightning Profiler
-    trainer = pl.Trainer(
-        logger=wandb_logger,
-        callbacks=[early_stop_callback, model_checker],
-        #profiler=profiler,
-        gpus=args.gpu,
-        log_every_n_steps=args.log_step,
-        max_epochs=args.num_epoch,
-        deterministic=True,
-    )
-
-    trainer.fit(model, train_dataloader, val_dataloader)
-    model.load_from_checkpoint(model_checker.best_model_path)
-
-    y_trues, predicts = get_predict(model, (train_dataloader, val_dataloader))
-    df = pd.DataFrame(np.array([y_trues, predicts]).T, columns=['True', 'Predicted'])
-    df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
+    y_trues, cls, predicts = get_predict(model, train_dataloader)
+    df = pd.DataFrame(np.array([y_trues, cls, predicts]).T, columns=['y_true', 'cls', 'predicted'])
+    df.to_csv(f'./predicts/get_predicted.csv', index=False)
 
 
