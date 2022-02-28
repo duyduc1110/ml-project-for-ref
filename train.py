@@ -139,6 +139,7 @@ if __name__ == '__main__':
 
     # Generate model
     model = BruceModel(**args.__dict__)
+    logger.info(model)
 
     # Get data
     train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path,

@@ -28,7 +28,7 @@ class BruceCNNCell(nn.Module):
         self.cnn_layers = nn.Sequential(cnn_stack)
 
         self.flatten = nn.Flatten()
-        self.cnn_out = nn.Linear(kwargs['output_channel'][-1] * out_c, kwargs['core_out'])
+        self.cnn_out = nn.Linear(kwargs['output_channel'][i] * out_c, kwargs['core_out'])
         self.act = nn.GELU()
         self.dropout_cnn = nn.Dropout(0.1)
 
