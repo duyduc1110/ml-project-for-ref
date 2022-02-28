@@ -2,35 +2,51 @@ import torch, torchmetrics
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from collections import OrderedDict
 
 
-class BruceCNNModule(nn.Module):
-    def __init__(self):
-        super(BruceCNNModule, self).__init__()
-        self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
-        self.ln1 = nn.LayerNorm(524)
-        self.avgpool1 = nn.AvgPool1d(8)
-        self.cnn2 = nn.Conv1d(1, 8, 16, padding='same')
-        self.ln2 = nn.LayerNorm(524)
-        self.avgpool2 = nn.AvgPool1d(8)
+class BruceCNNCell(nn.Module):
+    def __init__(self, **kwargs):
+        super(BruceCNNCell, self).__init__()
+
+        assert kwargs['num_cnn'] <= len(kwargs['kernel_size'])
+
+        cnn_stack = OrderedDict()
+        out_c = 524
+        for i in range(kwargs['num_cnn']):
+            cnn_layer = nn.Sequential(
+                nn.Conv1d(1 if i==0 else kwargs['output_channel'][i-1],
+                          kwargs['output_channel'][i],
+                          kwargs['kernel_size'][i],
+                          padding='same'),
+                nn.LayerNorm(out_c),
+                nn.MaxPool1d(2),
+                nn.Dropout(0.1),
+            )
+            out_c = out_c // 2
+            cnn_stack[f'cnn_{i}'] = cnn_layer
+        self.cnn_layers = nn.Sequential(cnn_stack)
+
         self.flatten = nn.Flatten()
-        self.cnn_out = nn.Linear(1040, 64)
+        self.cnn_out = nn.Linear(kwargs['output_channel'][-1] * out_c, kwargs['core_out'])
+        self.act = nn.GELU()
         self.dropout_cnn = nn.Dropout(0.1)
 
     def forward(self, inputs):
         b, f = inputs.shape
-        # CNN forward
-        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f).float())))
-        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f).float())))
-        x = torch.cat([x1, x2], -1)
+        x = inputs.reshape(b, 1, f).float()
+
+        for layer in self.cnn_layers:
+            x = layer(x)
+
         x = self.flatten(x)
-        x = F.gelu(self.cnn_out(x))
+        x = self.act(self.cnn_out(x))
         x = self.dropout_cnn(x)
 
         return x
 
 
-class BruceLSTMModule(nn.Module):
+class BruceLSTMMCell(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.lstm = nn.LSTM(input_size=524,
@@ -54,32 +70,27 @@ class BruceModel(pl.LightningModule):
         self.__dict__.update(kwargs)
         self.save_hyperparameters()
 
-        # CNN Layer
-        self.cnn1 = nn.Conv1d(1, 8, 8, padding='same')
-        self.ln1 = nn.LayerNorm(524)
-        self.avgpool1 = nn.AvgPool1d(8)
-        self.cnn2 = nn.Conv1d(1, 8, 16, padding='same')
-        self.ln2 = nn.LayerNorm(524)
-        self.avgpool2 = nn.AvgPool1d(8)
-        self.flatten = nn.Flatten()
-        self.cnn_out = nn.Linear(1040, 64)
-        self.dropout_cnn = nn.Dropout(0.1)
+        # Set core layer
+        if kwargs['backbone'] == 'cnn':
+            self.core = BruceCNNCell(**kwargs)
+        elif kwargs['backbone'] == 'lstm':
+            self.core = BruceLSTMMCell(**kwargs)
 
         # FCN Layer
-        self.fc1 = nn.Linear(64, 512)
+        self.fc1 = nn.Linear(self.core_out, self.core_out * 4)
         self.fc1_act = nn.GELU()
-        self.fc2 = nn.Linear(512, 64)
+        self.fc2 = nn.Linear(self.core_out * 4, self.core_out)
         self.fc2_act = nn.GELU()
-        self.layernorm_fcn = nn.LayerNorm(64)
+        self.layernorm_fcn = nn.LayerNorm(self.core_out)
         self.drop_fcn = nn.Dropout(0.1)
 
         # Cls output
-        self.cls_out = nn.Linear(64, 1)
+        self.cls_out = nn.Linear(self.core_out, 1)
 
         # Regression output
-        self.cls_embed = nn.Embedding(2, 64, padding_idx=0)
-        self.layernorm_rgs = nn.LayerNorm(64)
-        self.rgs_out = nn.Linear(64, 1)
+        self.cls_embed = nn.Embedding(2, self.core_out, padding_idx=0)
+        self.layernorm_rgs = nn.LayerNorm(self.core_out)
+        self.rgs_out = nn.Linear(self.core_out, 1)
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
@@ -93,13 +104,9 @@ class BruceModel(pl.LightningModule):
 
     def forward(self, inputs):
         b, f = inputs.shape
-        # CNN forward
-        x1 = self.avgpool1(self.ln1(self.cnn1(inputs.reshape(b, 1, f).float())))
-        x2 = self.avgpool2(self.ln2(self.cnn2(inputs.reshape(b, 1, f).float())))
-        x = torch.cat([x1, x2], -1)
-        x = self.flatten(x)
-        x = F.gelu(self.cnn_out(x))
-        x = self.dropout_cnn(x)
+
+        # Core forward
+        x = self.core(inputs)
 
         # FCN
         t = self.fc1_act(self.fc1(x))
@@ -166,48 +173,3 @@ class BruceModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
-
-
-class BruceRNNModel(pl.LightningModule):
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        self.save_hyperparameters(args)
-
-        # LSTM Layer
-        self.lstm = nn.LSTM(input_size=524,
-                            hidden_size=args.hidden_size,
-                            batch_first=True,
-                            dropout=0.1,
-                            bidirectional=args.bi_di,
-                            )
-        self.norm = nn.LayerNorm(args.hidden_size)
-
-        # FCN Layer
-        self.fc1 = nn.Linear(64, 512)
-        self.fc1_act = nn.GELU()
-        self.fc2 = nn.Linear(512, 64)
-        self.fc2_act = nn.GELU()
-        self.norm = nn.LayerNorm(64)
-        self.drop_fcn = nn.Dropout(0.1)
-
-        # Cls output
-        self.cls_out = nn.Linear(64, 1)
-
-        # Regression output
-        self.cls_embed = nn.Embedding(2, 64, padding_idx=0)
-        self.layernorm_rgs = nn.LayerNorm(64)
-        self.rgs_out = nn.Linear(64, 1)
-
-        # Loss function
-        self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
-        self.rgs_loss_fn = nn.L1Loss()
-
-        # Loss weights
-        self.loss_weights = torch.tensor(args.loss_weights).float()
-
-        # Metrics to log
-        self.train_acc = torchmetrics.Accuracy()
-        self.train_auc = torchmetrics.AUROC(pos_label=1)
-        self.val_acc = torchmetrics.Accuracy()
-        self.val_auc = torchmetrics.AUROC(pos_label=1)

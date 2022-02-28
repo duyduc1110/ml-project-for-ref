@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
-from model import BruceModel, BruceRNNModel
+from model import BruceModel
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profiler import AdvancedProfiler
@@ -51,7 +51,7 @@ def split_data(x, y1, y2):
     return train_test_split(x, y1, y2, test_size=0.2, stratify=y1)
 
 
-def get_data(path, no_sample):
+def get_data(path, no_sample, normalize=True):
     f = read_data(path)
     if no_sample:
         data = f['Samples_big'][:]
@@ -60,7 +60,7 @@ def get_data(path, no_sample):
 
     train_rgs_labels = data[:, 526].reshape(-1, 1)
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
-    train_inputs = preprocessing_data(data[:, :524], True)
+    train_inputs = preprocessing_data(data[:, :524], normalize)
 
     return split_data(train_inputs, train_cls_labels, train_rgs_labels)
 
@@ -70,14 +70,23 @@ def get_args():
 
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
-    model_parser.add_argument('--model_path', default=None, type=str, help="Model path")
-    model_parser.add_argument('--rgs_loss', default='mae', type=str, help="Regression loss, default is MAE")
+    model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, att')
     model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
+    model_parser.add_argument('--rgs_loss', default='mae', type=str, help="Regression loss, default is MAE")
+    model_parser.add_argument('--normalize', default=0, type=int, help='Normalize data if used, otherwise standardize ')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
-    model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
     model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
+    model_parser.add_argument('--cls_w', default=0.8, type=float, help='Classification weight')
+    model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
+
+    # CNN args
+    model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
+    model_parser.add_argument('-ks', '--kernel_size', nargs='+', default=[3], type=int, help='Kernel size for each CNN layer')
+    model_parser.add_argument('-oc', '--output_channel', nargs='+', default=[8], type=int, help='Output channel for each CNN layer')
+
+    # LSTM args
+    model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
     model_parser.add_argument('--num_lstm_layer', default=1, type=int, help='Number of LSTM layer')
-    model_parser.add_argument('--cls_w', default=0.8, type=float, help='Number of LSTM layer')
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
@@ -119,12 +128,15 @@ if __name__ == '__main__':
     args.loss_weights = [args.cls_w, 1 - args.cls_w] # set loss weights
     logging.basicConfig(level=args.logging_level)
     logger = logging.getLogger('model')
+    logger.info(args.__dict__)
 
     # Generate model
     model = BruceModel(**args.__dict__)
 
     # Get data
-    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path, args.no_sample)
+    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path,
+                                                                              args.no_sample,
+                                                                              args.normalize)
 
     # Create Dataloader
     train_dataset = TensorDataset(torch.FloatTensor(train_x),
