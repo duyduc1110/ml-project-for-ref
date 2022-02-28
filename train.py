@@ -14,6 +14,13 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import datetime
 
 
+class ParseAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print('%r %r %r' % (namespace, values, option_string))
+        values = list(map(int, values.split()))
+        setattr(namespace, self.dest, values)
+
+
 class BruceDataset(Dataset):
     def __init__(self, inputs, cls_labels=None, rgs_labels=None):
         super().__init__()
@@ -81,8 +88,8 @@ def get_args():
 
     # CNN args
     model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
-    model_parser.add_argument('-ks', '--kernel_size', nargs='+', default=[3], type=int, help='Kernel size for each CNN layer')
-    model_parser.add_argument('-oc', '--output_channel', nargs='+', default=[8], type=int, help='Output channel for each CNN layer')
+    model_parser.add_argument('-ks', '--kernel_size', default=[3], action=ParseAction, help='Kernel size for each CNN layer')
+    model_parser.add_argument('-oc', '--output_channel', default=[8], action=ParseAction, help='Output channel for each CNN layer')
 
     # LSTM args
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
