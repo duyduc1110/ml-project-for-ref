@@ -22,22 +22,23 @@ class ParseAction(argparse.Action):
 
 
 class BruceDataset(Dataset):
-    def __init__(self, inputs, cls_labels=None, rgs_labels=None):
+    def __init__(self, inputs, cls_labels=None, rgs_labels=None, seq_len=32):
         super().__init__()
         self.inputs = inputs
         self.cls_labels = cls_labels
         self.rgs_labels = rgs_labels
+        self.seq_len = seq_len
 
     def __len__(self):
-        return self.inputs.shape[0]
+        return self.inputs.shape[0] - self.seq_len
 
     def __getitem__(self, idx):
         if self.cls_labels is None:
-            return torch.tensor(self.inputs[idx])
+            return torch.tensor(self.inputs[idx : idx+self.seq_len])
         else:
-            return torch.tensor(self.inputs[idx]), \
-                   torch.tensor(self.cls_labels[idx]), \
-                   torch.tensor(self.rgs_labels[idx])
+            return torch.tensor(self.inputs[idx : idx+self.seq_len]), \
+                   torch.tensor(self.cls_labels[idx : idx+self.seq_len]), \
+                   torch.tensor(self.rgs_labels[idx : idx+self.seq_len])
 
 
 def read_data(path):
@@ -83,6 +84,7 @@ def get_args():
     model_parser.add_argument('--normalize', default=0, type=int, help='Normalize data if used, otherwise standardize ')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
     model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
+    model_parser.add_argument('-sl', '--seq_len', default=32, type=int, help='Sequence len')
     model_parser.add_argument('--cls_w', default=0.8, type=float, help='Classification weight')
     model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
 
@@ -147,13 +149,16 @@ if __name__ == '__main__':
                                                                               args.normalize)
 
     # Create Dataloader
+    '''
     train_dataset = TensorDataset(torch.FloatTensor(train_x),
                                   torch.FloatTensor(train_y_cls),
                                   torch.FloatTensor(train_y_rgs))
     val_dataset = TensorDataset(torch.FloatTensor(val_x),
                                 torch.FloatTensor(val_y_cls),
                                 torch.FloatTensor(val_y_rgs))
-    #train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
+    '''
+
+    train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)

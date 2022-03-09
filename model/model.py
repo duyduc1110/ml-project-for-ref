@@ -1,4 +1,4 @@
-import torch, torchmetrics
+import torch, torchmetrics, wandb
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
@@ -69,6 +69,7 @@ class BruceModel(pl.LightningModule):
         super().__init__()
         self.__dict__.update(kwargs)
         self.save_hyperparameters()
+        self.save_hyperparameters(kwargs)
 
         # Set core layer
         if kwargs['backbone'] == 'cnn':
@@ -129,6 +130,8 @@ class BruceModel(pl.LightningModule):
         return self.cls_loss_fn(cls_out, cls_true.float()), self.rgs_loss_fn(rgs_out, rgs_true)
 
     def training_step(self, batch, batch_idx):
+        if self.trainer.global_step == 0:
+            wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, rgs_labels = batch
         cls_out, rgs_out = self(inputs)
 
@@ -151,6 +154,9 @@ class BruceModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        # Track best rgs loss
+        if self.trainer.global_step == 0:
+            wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, rgs_labels = batch
         cls_out, rgs_out = self(inputs)
 
