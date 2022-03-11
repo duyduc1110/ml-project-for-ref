@@ -84,8 +84,8 @@ class BruceUp(nn.Module):
             BruceStackedConv(in_channel, out_channel, kernel_size, **kwargs)
         )
 
-    def forward(self, inputs):
-        return self.up_cnn(inputs)
+    def forward(self, inputs, hidden_state):
+        return self.up_cnn(inputs) + hidden_state
 
 
 class BruceProcessingModule(nn.Module):
@@ -136,21 +136,25 @@ class BruceUNet(nn.Module):
             ))
         self.up_blocks = nn.ModuleList(ups)
 
+        self.flatten = nn.Flatten()
+
     def forward(self, x: torch.FloatTensor):
+        hidden_states = []
+
         x = self.processing_input(x)
-        print(x.shape)
+        hidden_states.insert(0, x)
 
         # Down forward
         for layer in self.down_blocks:
             x = layer(x)
-            print(x.shape)
+            hidden_states.insert(0, x)
 
         # Up forward
-        for layer in self.up_blocks:
-            x = layer(x)
-            print(x.shape)
+        hidden_states.pop(0)
+        for i, layer in enumerate(self.up_blocks):
+            x = layer(x, hidden_states[i])
 
-        return x
+        return self.flatten(x)
 
 
 class BruceLSTMMCell(nn.Module):
@@ -183,6 +187,8 @@ class BruceModel(pl.LightningModule):
             self.core = BruceCNNCell(**kwargs)
         elif kwargs['backbone'] == 'lstm':
             self.core = BruceLSTMMCell(**kwargs)
+        elif kwargs['backbone'] == 'unet':
+            self.core = BruceUNet(**kwargs)
 
         # FCN Layer
         self.fc1 = nn.Linear(self.core_out, self.core_out * 4)
