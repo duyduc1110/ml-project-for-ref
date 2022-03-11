@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
-from model import BruceModel, BruceRNNModel
+from model import BruceModel
 from sklearn.model_selection import train_test_split
 
 
@@ -98,7 +98,9 @@ def get_predict(model, dataloader):
         cls.extend(torch.sigmoid(cls_out.reshape(-1)).tolist())
         predicts.extend(rgs_out.reshape(-1).tolist())
 
-    return y_trues, cls, predicts
+    final_predicts = (np.array(cls) >= 0.5) * np.array(predicts)
+
+    return y_trues, cls, predicts, final_predicts
 
 
 if __name__ == '__main__':
@@ -121,8 +123,9 @@ if __name__ == '__main__':
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size)
 
-    y_trues, cls, predicts = get_predict(model, train_dataloader)
-    df = pd.DataFrame(np.array([y_trues, cls, predicts]).T, columns=['y_true', 'cls', 'predicted'])
-    df.to_csv(f'./predicts/get_predicted.csv', index=False)
+    y_trues, cls, predicts, final_predicts = get_predict(model, train_dataloader)
+    df = pd.DataFrame(np.array([y_trues, cls, predicts, final_predicts]).T, columns=['y_true', 'cls', 'rgs', 'final'])
+    df.to_csv(f'./predicts/predicted.csv', index=False)
+
 
 

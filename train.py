@@ -110,7 +110,8 @@ def get_args():
 
 def get_predict(model, dataloaders):
     y_trues = []
-    predicts = []
+    rgs = []
+    cls = []
 
     for dataloader in dataloaders:
         for batch in dataloader:
@@ -118,9 +119,13 @@ def get_predict(model, dataloaders):
             cls_out, rgs_out = model(inputs)
 
             y_trues.extend(rgs_labels.reshape(-1).tolist())
-            predicts.extend(rgs_out.reshape(-1).tolist())
+            cls.extend(torch.sigmoid(cls_out.reshape(-1)).tolist())
+            rgs.extend(rgs_out.reshape(-1).tolist())
 
-    return y_trues, predicts
+    final_predicts = (np.array(cls) >= 0.5) * np.array(rgs)
+
+    return y_trues, cls, rgs, final_predicts
+
 
 
 INIT_LR = 1e-3
@@ -149,7 +154,7 @@ if __name__ == '__main__':
                                                                               args.normalize)
 
     # Create Dataloader
-    '''
+
     train_dataset = TensorDataset(torch.FloatTensor(train_x),
                                   torch.FloatTensor(train_y_cls),
                                   torch.FloatTensor(train_y_rgs))
@@ -157,8 +162,8 @@ if __name__ == '__main__':
                                 torch.FloatTensor(val_y_cls),
                                 torch.FloatTensor(val_y_rgs))
     '''
-
     train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
+    '''
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
@@ -194,8 +199,10 @@ if __name__ == '__main__':
     trainer.fit(model, train_dataloader, val_dataloader)
     model.load_from_checkpoint(model_checker.best_model_path)
 
-    y_trues, predicts = get_predict(model, (train_dataloader, val_dataloader))
-    df = pd.DataFrame(np.array([y_trues, predicts]).T, columns=['True', 'Predicted'])
+    y_trues, cls, predicts, final_predicts = get_predict(model,
+                                                         (train_dataloader, val_dataloader))
+    df = pd.DataFrame(np.array([y_trues, cls, predicts, final_predicts]).T,
+                      columns=['y_true', 'cls', 'rgs', 'final'])
     df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
 
 

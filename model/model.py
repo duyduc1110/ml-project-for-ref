@@ -15,7 +15,7 @@ class BruceCNNCell(nn.Module):
         out_c = 524
         for i in range(kwargs['num_cnn']):
             cnn_layer = nn.Sequential(
-                nn.Conv1d(1 if i==0 else kwargs['output_channel'][i-1],
+                nn.Conv1d(1 if i == 0 else kwargs['output_channel'][i - 1],
                           kwargs['output_channel'][i],
                           kwargs['kernel_size'][i],
                           padding='same'),
@@ -42,6 +42,113 @@ class BruceCNNCell(nn.Module):
         x = self.flatten(x)
         x = self.act(self.cnn_out(x))
         x = self.dropout_cnn(x)
+
+        return x
+
+
+class BruceStackedConv(nn.Module):
+    def __init__(self, in_channel=1, out_channel=2, kernel_size=3, **kwargs):
+        super().__init__()
+        self.stacked_conv = nn.Sequential(
+            nn.Conv1d(in_channel, out_channel, kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+            nn.Conv1d(out_channel, out_channel, kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+        )
+
+    def forward(self, inputs):
+        return self.stacked_conv(inputs)
+
+
+class BruceDown(nn.Module):
+    def __init__(self, in_channel=1, out_channel=2, kernel_size=3, **kwargs):
+        super(BruceDown, self).__init__()
+        self.maxpool_cnn = nn.Sequential(
+            nn.MaxPool1d(2),
+            BruceStackedConv(in_channel, out_channel, kernel_size, **kwargs)
+        )
+
+    def forward(self, inputs):
+        return self.maxpool_cnn(inputs)
+
+
+class BruceUp(nn.Module):
+    def __init__(self, in_channel=1, out_channel=2, kernel_size=3, **kwargs):
+        super(BruceUp, self).__init__()
+        self.up_cnn = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            BruceStackedConv(in_channel, out_channel, kernel_size, **kwargs)
+        )
+
+    def forward(self, inputs):
+        return self.up_cnn(inputs)
+
+
+class BruceProcessingModule(nn.Module):
+    def __init__(self, num_feature=512, out_channel=64, kernel_size=3, **kwargs):
+        super(BruceProcessingModule, self).__init__()
+        self.processing_module = nn.Sequential(
+            nn.Linear(524, num_feature),
+            nn.Conv1d(1, out_channel, kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+            nn.Conv1d(out_channel, out_channel, kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+        )
+
+    def forward(self, inputs):
+        b, f = inputs.shape
+        inputs = inputs.reshape(b, 1, f).float()
+        return self.processing_module(inputs)
+
+
+class BruceUNet(nn.Module):
+    def __init__(self, **kwargs):
+        super(BruceUNet, self).__init__()
+        self.processing_input = BruceProcessingModule(out_channel=kwargs['output_channel'][0],
+                                                      kernel_size=kwargs['kernel_size'][0])
+
+        # Build Down Blocks
+        output_channel = kwargs['output_channel']
+        downs = []
+        for i in range(1, len(output_channel)):
+            downs.append(BruceDown(
+                in_channel=output_channel[i-1],
+                out_channel=output_channel[i],
+                kernel_size=kwargs['kernel_size'][i]
+            ))
+        self.down_blocks = nn.ModuleList(downs)
+
+        # Build Up Blocks
+        ups = []
+        for i in range(len(output_channel)-1, 0, -1):
+            ups.append(BruceUp(
+                in_channel=output_channel[i],
+                out_channel=output_channel[i-1],
+                kernel_size=kwargs['kernel_size'][i]
+            ))
+        self.up_blocks = nn.ModuleList(ups)
+
+    def forward(self, x: torch.FloatTensor):
+        x = self.processing_input(x)
+        print(x.shape)
+
+        # Down forward
+        for layer in self.down_blocks:
+            x = layer(x)
+            print(x.shape)
+
+        # Up forward
+        for layer in self.up_blocks:
+            x = layer(x)
+            print(x.shape)
 
         return x
 

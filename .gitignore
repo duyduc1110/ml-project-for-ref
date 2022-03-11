@@ -9,3 +9,4 @@
 # Not these files
 !.gitignore
 !*.py
+!note
