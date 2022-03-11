@@ -136,6 +136,7 @@ class BruceUNet(nn.Module):
             ))
         self.up_blocks = nn.ModuleList(ups)
 
+        self.avgpool = nn.AvgPool1d(4)
         self.flatten = nn.Flatten()
 
     def forward(self, x: torch.FloatTensor):
@@ -154,7 +155,7 @@ class BruceUNet(nn.Module):
         for i, layer in enumerate(self.up_blocks):
             x = layer(x, hidden_states[i])
 
-        return self.flatten(x)
+        return self.flatten(self.avgpool(x))
 
 
 class BruceLSTMMCell(nn.Module):
