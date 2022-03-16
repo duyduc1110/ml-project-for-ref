@@ -1,4 +1,4 @@
-import torch, torchmetrics, wandb
+import torch, torchmetrics, wandb, transformers
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
@@ -110,19 +110,19 @@ class BruceProcessingModule(nn.Module):
 
 
 class BruceUNet(nn.Module):
-    def __init__(self, **kwargs):
+    def __init__(self, num_feature=512, output_channel=[64, 128], kernel_size=[3, 3], core_out=512, **kwargs):
         super(BruceUNet, self).__init__()
-        self.processing_input = BruceProcessingModule(out_channel=kwargs['output_channel'][0],
-                                                      kernel_size=kwargs['kernel_size'][0])
+        self.processing_input = BruceProcessingModule(num_feature=core_out,
+                                                      out_channel=output_channel[0],
+                                                      kernel_size=kernel_size[0])
 
         # Build Down Blocks
-        output_channel = kwargs['output_channel']
         downs = []
         for i in range(1, len(output_channel)):
             downs.append(BruceDown(
                 in_channel=output_channel[i-1],
                 out_channel=output_channel[i],
-                kernel_size=kwargs['kernel_size'][i]
+                kernel_size=kernel_size[i]
             ))
         self.down_blocks = nn.ModuleList(downs)
 
@@ -132,12 +132,18 @@ class BruceUNet(nn.Module):
             ups.append(BruceUp(
                 in_channel=output_channel[i],
                 out_channel=output_channel[i-1],
-                kernel_size=kwargs['kernel_size'][i]
+                kernel_size=kernel_size[i]
             ))
         self.up_blocks = nn.ModuleList(ups)
 
-        self.avgpool = nn.AvgPool1d(4)
-        self.flatten = nn.Flatten()
+        self.unet_out = nn.Sequential(
+            nn.Conv1d(output_channel[0], output_channel[0], kernel_size=kernel_size[0], padding='same'),
+            nn.BatchNorm1d(output_channel[0]),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(in_channels=output_channel[0], out_channels=2, kernel_size=1, padding='same'),
+            nn.Dropout(0.1),
+            nn.Flatten(),
+        )
 
     def forward(self, x: torch.FloatTensor):
         hidden_states = []
@@ -155,7 +161,7 @@ class BruceUNet(nn.Module):
         for i, layer in enumerate(self.up_blocks):
             x = layer(x, hidden_states[i])
 
-        return self.flatten(self.avgpool(x))
+        return self.unet_out(x)
 
 
 class BruceLSTMMCell(nn.Module):
@@ -190,6 +196,7 @@ class BruceModel(pl.LightningModule):
             self.core = BruceLSTMMCell(**kwargs)
         elif kwargs['backbone'] == 'unet':
             self.core = BruceUNet(**kwargs)
+            self.core_out *= 2
 
         # FCN Layer
         self.fc1 = nn.Linear(self.core_out, self.core_out * 4)
@@ -216,6 +223,22 @@ class BruceModel(pl.LightningModule):
         self.train_auc = torchmetrics.AUROC(pos_label=1)
         self.val_acc = torchmetrics.Accuracy()
         self.val_auc = torchmetrics.AUROC(pos_label=1)
+
+        # Init weights
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module: nn.Module):
+        if isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=self.initializer_range)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=self.initializer_range)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
 
     def forward(self, inputs):
         b, f = inputs.shape
@@ -250,11 +273,16 @@ class BruceModel(pl.LightningModule):
         cls_out, rgs_out = self(inputs)
 
         cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
-        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        #loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        loss = cls_loss + rgs_loss
 
         # Log loss
-        self.log('train/cls_loss', cls_loss.item(), prog_bar=True)
+        self.log('train/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('train/rgs_loss', rgs_loss.item(), prog_bar=True)
+
+        # Log learning rate to progress bar
+        cur_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        self.log("lr", cur_lr, logger=False, prog_bar=True, on_step=True, on_epoch=False)
 
         # Calculate train metrics
         self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
@@ -278,7 +306,7 @@ class BruceModel(pl.LightningModule):
         loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
 
         # Log loss
-        self.log('val/cls_loss', cls_loss.item(), prog_bar=True)
+        self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('val/rgs_loss', rgs_loss.item(), prog_bar=True)
         self.log('val_rgs_loss', rgs_loss.item(), prog_bar=False, logger=False)
 
@@ -288,8 +316,19 @@ class BruceModel(pl.LightningModule):
 
         # Log train metrics
         self.log('val/loss', loss)
-        self.log('val/acc', self.val_acc, prog_bar=True)
-        self.log('val/auc', self.val_auc, prog_bar=True)
+        self.log('val/acc', self.val_acc, prog_bar=False)
+        self.log('val/auc', self.val_auc, prog_bar=False)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        scheduler = transformers.get_cosine_schedule_with_warmup(optimizer,
+                                                                 num_warmup_steps=10,
+                                                                 num_training_steps=self.num_epoch
+                                                                 )
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',
+            }
+        }

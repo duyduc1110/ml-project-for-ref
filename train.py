@@ -9,8 +9,7 @@ from model import BruceModel
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profiler import AdvancedProfiler
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from datetime import datetime
 
 
@@ -66,7 +65,7 @@ def get_data(path, no_sample, normalize=True):
     else:
         data = f['Samples_big'][:2000]
 
-    train_rgs_labels = data[:, 526].reshape(-1, 1)
+    train_rgs_labels = data[:, 526].reshape(-1, 1) * 10
     train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
     train_inputs = preprocessing_data(data[:, :524], normalize)
 
@@ -87,6 +86,7 @@ def get_args():
     model_parser.add_argument('-sl', '--seq_len', default=32, type=int, help='Sequence len')
     model_parser.add_argument('--cls_w', default=0.8, type=float, help='Classification weight')
     model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
+    model_parser.add_argument('--initializer_range', default=0.02, type=float, help='Initializer range')
 
     # CNN args
     model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
@@ -99,6 +99,7 @@ def get_args():
 
     # Trainer arguments
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
+    model_parser.add_argument('--find_lr', action='store_true', help='Find best learning rate')
     model_parser.add_argument('--batch_size', default=128, type=int, help='Batch size per device')
     model_parser.add_argument('--log_step', default=100, type=int, help='Steps per log')
     model_parser.add_argument('--gpu', default=0, type=int, help='Use GPUs')
@@ -175,6 +176,7 @@ if __name__ == '__main__':
 
     # Init Callbacks
     profiler = AdvancedProfiler()
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
     early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
                                         mode='min',
                                         patience=8,
@@ -188,7 +190,7 @@ if __name__ == '__main__':
     # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
         logger=wandb_logger,
-        callbacks=[early_stop_callback, model_checker],
+        callbacks=[lr_monitor, early_stop_callback, model_checker],
         #profiler=profiler,
         gpus=args.gpu,
         log_every_n_steps=args.log_step,
@@ -196,9 +198,21 @@ if __name__ == '__main__':
         deterministic=True,
     )
 
-    trainer.fit(model, train_dataloader, val_dataloader)
-    model.load_from_checkpoint(model_checker.best_model_path)
+    if args.find_lr:
+        lr_finder = trainer.tuner.lr_find(model, train_dataloader, val_dataloader,  min_lr=1e-5, max_lr=0.1)
+        print(lr_finder.results)
 
+        fig = lr_finder.plot(suggest=True, show=True)
+
+        new_lr = lr_finder.suggestion()
+        print('Suggested learning rate: ', new_lr)
+        model.hparams.lr = new_lr
+
+    # Fit training data
+    trainer.fit(model, train_dataloader, val_dataloader)
+    model.load_from_checkpoint(model_checker.best_model_path)   # load best model checkpoint
+
+    # Store prediction from best model
     y_trues, cls, predicts, final_predicts = get_predict(model,
                                                          (train_dataloader, val_dataloader))
     df = pd.DataFrame(np.array([y_trues, cls, predicts, final_predicts]).T,
