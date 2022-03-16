@@ -323,7 +323,7 @@ class BruceModel(pl.LightningModule):
         def get_lr_scheduler(opt, factor, num_warmup_steps, num_training_steps, last_epoch=-1):
             def lr_lambda(current_step: int):
                 if current_step < num_warmup_steps:
-                    return float(current_step) / float(max(1, num_warmup_steps))
+                    return max(factor, float(current_step)) / float(max(1, num_warmup_steps))
                 return max(
                     factor, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
                 )
