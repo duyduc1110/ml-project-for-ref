@@ -320,11 +320,20 @@ class BruceModel(pl.LightningModule):
         self.log('val/auc', self.val_auc, prog_bar=False)
 
     def configure_optimizers(self):
+        def get_lr_scheduler(optimizer, factor=0.0, num_warmup_steps, num_training_steps, last_epoch=-1):
+            def lr_lambda(current_step: int):
+                if current_step < num_warmup_steps:
+                    return float(current_step) / float(max(1, num_warmup_steps))
+                return max(
+                    factor, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
+                )
+
+            return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        scheduler = transformers.get_cosine_schedule_with_warmup(optimizer,
-                                                                 num_warmup_steps=10,
-                                                                 num_training_steps=self.num_epoch
-                                                                 )
+        scheduler = get_lr_scheduler(optimizer,
+                                     factor=0.05,
+                                     num_warmup_steps=10,
+                                     num_training_steps=self.num_epoch)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
