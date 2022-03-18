@@ -219,11 +219,13 @@ class BruceModel(pl.LightningModule):
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
         self.rgs_loss_fn = nn.MSELoss() if self.rgs_loss == 'mse' else nn.L1Loss()
 
+        '''
         # Metrics to log
         self.train_acc = torchmetrics.Accuracy()
         self.train_auc = torchmetrics.AUROC(pos_label=1)
         self.val_acc = torchmetrics.Accuracy()
         self.val_auc = torchmetrics.AUROC(pos_label=1)
+        '''
 
         # Init weights
         self.apply(self._init_weights)
@@ -261,7 +263,7 @@ class BruceModel(pl.LightningModule):
         cls_embed = self.cls_embed(bi_cls)
         rgs_out = self.layernorm_rgs(cls_out + cls_embed)
         dt_out = self.dt_out(rgs_out)
-        id_out = self.dt_out(rgs_out)
+        id_out = self.id_out(rgs_out)
 
         return cls_out, dt_out, id_out
 
@@ -276,7 +278,7 @@ class BruceModel(pl.LightningModule):
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         #loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = (cls_loss + rgs_loss + id_loss).mean()
+        loss = (cls_loss + rgs_loss + id_loss) / 3
 
         # Log loss
         self.log('train/cls_loss', cls_loss.item(), prog_bar=False)
@@ -287,14 +289,16 @@ class BruceModel(pl.LightningModule):
         cur_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log("lr", cur_lr, logger=False, prog_bar=True, on_step=True, on_epoch=False)
 
+        '''
         # Calculate train metrics
         self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
         self.train_auc(torch.sigmoid(cls_out), cls_labels.long())
+        '''
 
         # Log train metrics
         self.log('train/loss', loss.item())
-        self.log('train/acc', self.train_acc)
-        self.log('train/auc', self.train_auc)
+        # self.log('train/acc', self.train_acc)
+        # self.log('train/auc', self.train_auc)
 
         return loss
 
@@ -307,7 +311,7 @@ class BruceModel(pl.LightningModule):
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = (cls_loss + rgs_loss + id_loss).mean()
+        loss = (cls_loss + rgs_loss + id_loss) / 3
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
@@ -315,14 +319,16 @@ class BruceModel(pl.LightningModule):
         self.log('val_rgs_loss', rgs_loss.item(), prog_bar=False, logger=False)
         self.log('val/id_loss', id_loss.item(), prog_bar=False)
 
+        '''
         # Calculate train metrics
         self.val_acc(torch.sigmoid(cls_out), cls_labels.long())
         self.val_auc(torch.sigmoid(cls_out), cls_labels.long())
+        '''
 
         # Log train metrics
         self.log('val/loss', loss.item())
-        self.log('val/acc', self.val_acc, prog_bar=False)
-        self.log('val/auc', self.val_auc, prog_bar=False)
+        # self.log('val/acc', self.val_acc, prog_bar=False)
+        # self.log('val/auc', self.val_auc, prog_bar=False)
 
     def configure_optimizers(self):
         def get_lr_scheduler(opt, factor, num_warmup_steps, num_training_steps, last_epoch=-1):
