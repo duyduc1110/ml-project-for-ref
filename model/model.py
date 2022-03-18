@@ -336,15 +336,15 @@ class BruceModel(pl.LightningModule):
                 if current_step < num_warmup_steps:
                     return max(factor, float(current_step)) / float(max(1, num_warmup_steps))
                 return max(
-                    factor, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
+                    factor,
+                    float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
                 )
 
             return torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda, last_epoch)
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        scheduler = get_lr_scheduler(optimizer,
-                                     factor=0.05,
-                                     num_warmup_steps=self.warming_step,
-                                     num_training_steps=self.total_training_step - self.warming_step)
+        scheduler = transformers.get_linear_schedule_with_warmup(optimizer,
+                                                                 num_warmup_steps=self.warming_step,
+                                                                 num_training_steps=self.total_training_step - self.warming_step)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {

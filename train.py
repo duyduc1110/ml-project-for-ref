@@ -105,22 +105,25 @@ def get_args():
 
 
 def get_predict(model, dataloaders):
-    y_trues = []
-    rgs = []
+    dt_trues, id_trues = [], []
+    dt_predicts, id_predicts = [], []
     cls = []
 
     for dataloader in dataloaders:
         for batch in dataloader:
-            inputs, cls_labels, rgs_labels = batch
-            cls_out, rgs_out = model(inputs)
+            inputs, cls_labels, dt_labels, id_labels = batch
+            cls_out, dt_out, id_out = model(inputs)
 
-            y_trues.extend(rgs_labels.reshape(-1).tolist())
+            dt_trues.extend(dt_labels.reshape(-1).tolist())
+            id_trues.extend(id_labels.reshape(-1).tolist())
+
             cls.extend(torch.sigmoid(cls_out.reshape(-1)).tolist())
-            rgs.extend(rgs_out.reshape(-1).tolist())
+            dt_predicts.extend(dt_out.reshape(-1).tolist())
+            id_predicts.extend(id_out.reshape(-1).tolist())
 
-    final_predicts = (np.array(cls) >= 0.5) * np.array(rgs)
+    final_predicts = (np.array(cls) >= 0.5) * np.array(dt_predicts)
 
-    return y_trues, cls, rgs, final_predicts
+    return dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts
 
 
 INIT_LR = 1e-3
@@ -164,9 +167,8 @@ if __name__ == '__main__':
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Calculate training steps for learning rate scheduler
-    steps_per_epoch = train_inputs // args.batch_size
+    steps_per_epoch = int(train_inputs.shape[0] // args.batch_size + 1)
     args.total_training_step = steps_per_epoch * args.num_epoch
-    args.warming_step = 10000
 
     # Generate model
     model = BruceModel(**args.__dict__)
@@ -179,7 +181,7 @@ if __name__ == '__main__':
 
     # Init Callbacks
     profiler = AdvancedProfiler()
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    lr_monitor = LearningRateMonitor(logging_interval='step')
     early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
                                         mode='min',
                                         patience=20,
@@ -216,8 +218,8 @@ if __name__ == '__main__':
     model.load_from_checkpoint(model_checker.best_model_path)  # load best model checkpoint
 
     # Store prediction from best model
-    y_trues, cls, predicts, final_predicts = get_predict(model,
-                                                         (train_dataloader, val_dataloader))
-    df = pd.DataFrame(np.array([y_trues, cls, predicts, final_predicts]).T,
-                      columns=['y_true', 'cls', 'rgs', 'final'])
+    dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts = get_predict(model,
+                                                                                    (train_dataloader, val_dataloader))
+    df = pd.DataFrame(np.array([dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts]).T,
+                      columns=['dt_trues', 'id_trues', 'cls', 'dt_predicts', 'id_predicts', 'final_predicts'])
     df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
