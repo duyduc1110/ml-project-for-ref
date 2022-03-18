@@ -187,7 +187,7 @@ class BruceModel(pl.LightningModule):
         super().__init__()
         self.__dict__.update(kwargs)
         self.save_hyperparameters()
-        self.save_hyperparameters(kwargs)
+        #self.save_hyperparameters(kwargs)
 
         # Set core layer
         if kwargs['backbone'] == 'cnn':
@@ -212,7 +212,8 @@ class BruceModel(pl.LightningModule):
         # Regression output
         self.cls_embed = nn.Embedding(2, self.core_out, padding_idx=0)
         self.layernorm_rgs = nn.LayerNorm(self.core_out)
-        self.rgs_out = nn.Linear(self.core_out, 1)
+        self.dt_out = nn.Linear(self.core_out, 1)
+        self.id_out = nn.Linear(self.core_out, 1)
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
@@ -228,7 +229,7 @@ class BruceModel(pl.LightningModule):
         self.apply(self._init_weights)
 
     def _init_weights(self, module: nn.Module):
-        if isinstance(module, nn.Linear):
+        if isinstance(module, nn.Linear) or isinstance(module, nn.Conv1d):
             module.weight.data.normal_(mean=0.0, std=self.initializer_range)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -259,26 +260,28 @@ class BruceModel(pl.LightningModule):
         bi_cls = (cls_out > 0.5).squeeze().long()
         cls_embed = self.cls_embed(bi_cls)
         rgs_out = self.layernorm_rgs(cls_out + cls_embed)
-        rgs_out = self.rgs_out(rgs_out)
+        dt_out = self.dt_out(rgs_out)
+        id_out = self.dt_out(rgs_out)
 
-        return cls_out, rgs_out
+        return cls_out, dt_out, id_out
 
-    def loss(self, cls_out, rgs_out, cls_true, rgs_true):
-        return self.cls_loss_fn(cls_out, cls_true.float()), self.rgs_loss_fn(rgs_out, rgs_true)
+    def loss(self, cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels):
+        return self.cls_loss_fn(cls_out, cls_labels.float()), self.rgs_loss_fn(dt_out, dt_labels), self.rgs_loss_fn(id_out, id_labels)
 
     def training_step(self, batch, batch_idx):
         if self.trainer.global_step == 0:
             wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
-        inputs, cls_labels, rgs_labels = batch
-        cls_out, rgs_out = self(inputs)
+        inputs, cls_labels, dt_labels, id_labels = batch
+        cls_out, dt_out, id_out = self(inputs)
 
-        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
+        cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         #loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = cls_loss + rgs_loss
+        loss = (cls_loss + rgs_loss + id_loss).mean()
 
         # Log loss
         self.log('train/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('train/rgs_loss', rgs_loss.item(), prog_bar=True)
+        self.log('train/id_loss', id_loss.item(), prog_bar=False)
 
         # Log learning rate to progress bar
         cur_lr = self.trainer.optimizers[0].param_groups[0]['lr']
@@ -299,23 +302,25 @@ class BruceModel(pl.LightningModule):
         # Track best rgs loss
         if self.trainer.global_step == 0:
             wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
-        inputs, cls_labels, rgs_labels = batch
-        cls_out, rgs_out = self(inputs)
+        inputs, cls_labels, dt_labels, id_labels = batch
+        cls_out, dt_out, id_out = self(inputs)
 
-        cls_loss, rgs_loss = self.loss(cls_out, rgs_out, cls_labels, rgs_labels)
-        loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
+        # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        loss = (cls_loss + rgs_loss + id_loss).mean()
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('val/rgs_loss', rgs_loss.item(), prog_bar=True)
         self.log('val_rgs_loss', rgs_loss.item(), prog_bar=False, logger=False)
+        self.log('val/id_loss', id_loss.item(), prog_bar=False)
 
         # Calculate train metrics
         self.val_acc(torch.sigmoid(cls_out), cls_labels.long())
         self.val_auc(torch.sigmoid(cls_out), cls_labels.long())
 
         # Log train metrics
-        self.log('val/loss', loss)
+        self.log('val/loss', loss.item())
         self.log('val/acc', self.val_acc, prog_bar=False)
         self.log('val/auc', self.val_auc, prog_bar=False)
 
@@ -332,12 +337,12 @@ class BruceModel(pl.LightningModule):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         scheduler = get_lr_scheduler(optimizer,
                                      factor=0.05,
-                                     num_warmup_steps=10,
-                                     num_training_steps=self.num_epoch)
+                                     num_warmup_steps=self.warming_step,
+                                     num_training_steps=self.total_training_step - self.warming_step)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
-                'interval': 'epoch',
+                'interval': 'step',
             }
         }

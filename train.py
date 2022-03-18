@@ -33,16 +33,11 @@ class BruceDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.cls_labels is None:
-            return torch.tensor(self.inputs[idx : idx+self.seq_len])
+            return torch.tensor(self.inputs[idx: idx + self.seq_len])
         else:
-            return torch.tensor(self.inputs[idx : idx+self.seq_len]), \
-                   torch.tensor(self.cls_labels[idx : idx+self.seq_len]), \
-                   torch.tensor(self.rgs_labels[idx : idx+self.seq_len])
-
-
-def read_data(path):
-    f = h5py.File(path)
-    return f
+            return torch.tensor(self.inputs[idx: idx + self.seq_len]), \
+                   torch.tensor(self.cls_labels[idx: idx + self.seq_len]), \
+                   torch.tensor(self.rgs_labels[idx: idx + self.seq_len])
 
 
 def preprocessing_data(arr, normalize=True):
@@ -54,22 +49,17 @@ def preprocessing_data(arr, normalize=True):
         return (arr - arr.mean()) / arr.std()
 
 
-def split_data(x, y1, y2):
-    return train_test_split(x, y1, y2, test_size=0.2, stratify=y1)
-
-
 def get_data(path, no_sample, normalize=True):
-    f = read_data(path)
-    if no_sample:
-        data = f['Samples_big'][:]
-    else:
-        data = f['Samples_big'][:2000]
+    f = h5py.File(path, 'r')
+    idx = -1 if no_sample else 2000
 
-    train_rgs_labels = data[:, 526].reshape(-1, 1) * 10
-    train_cls_labels = (train_rgs_labels > 0).reshape(-1, 1)
-    train_inputs = preprocessing_data(data[:, :524], normalize)
+    inputs = f.get('inputs')[:idx]
+    inputs = preprocessing_data(inputs, normalize)
+    cls_label = f.get('cls_label')[:idx]
+    deposit_thickness = f.get('deposit_thickness')[:idx]
+    inner_diameter = f.get('inner_diameter')[:idx]
 
-    return split_data(train_inputs, train_cls_labels, train_rgs_labels)
+    return inputs, cls_label, deposit_thickness, inner_diameter
 
 
 def get_args():
@@ -78,7 +68,10 @@ def get_args():
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
     model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, att')
-    model_parser.add_argument('--data_path', default='data.mat', type=str, help='Data path')
+    model_parser.add_argument('--train_path', default='train.h5', type=str, help='Train data path')
+    model_parser.add_argument('--val_path', default='val.h5', type=str, help='Validation data path')
+    model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
+    model_parser.add_argument('--warming_step', default=1e5, type=int, help='Warming step')
     model_parser.add_argument('--rgs_loss', default='mae', type=str, help="Regression loss, default is MAE")
     model_parser.add_argument('--normalize', default=0, type=int, help='Normalize data if used, otherwise standardize ')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
@@ -90,8 +83,10 @@ def get_args():
 
     # CNN args
     model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
-    model_parser.add_argument('-ks', '--kernel_size', default=[3], action=ParseAction, help='Kernel size for each CNN layer')
-    model_parser.add_argument('-oc', '--output_channel', default=[8], action=ParseAction, help='Output channel for each CNN layer')
+    model_parser.add_argument('-ks', '--kernel_size', default=[3], action=ParseAction,
+                              help='Kernel size for each CNN layer')
+    model_parser.add_argument('-oc', '--output_channel', default=[8], action=ParseAction,
+                              help='Output channel for each CNN layer')
 
     # LSTM args
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
@@ -128,7 +123,6 @@ def get_predict(model, dataloaders):
     return y_trues, cls, rgs, final_predicts
 
 
-
 INIT_LR = 1e-3
 EPOCH = 100
 SCHEDULER_EPOCH = 20
@@ -136,38 +130,47 @@ SCHEDULER_RATE = 0.9
 CLASS_W = [{0: 0.85, 1: 0.15}, None]
 DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
 
-
 if __name__ == '__main__':
     # Get arguments & logger
     args = get_args()
-    args.loss_weights = [args.cls_w, 1 - args.cls_w] # set loss weights
+    args.loss_weights = [args.cls_w, 1 - args.cls_w]  # set loss weights
     logging.basicConfig(level=args.logging_level)
     logger = logging.getLogger('model')
     logger.info(args.__dict__)
 
-    # Generate model
-    model = BruceModel(**args.__dict__)
-    logger.info(model)
-
     # Get data
-    train_x, val_x, train_y_cls, val_y_cls, train_y_rgs, val_y_rgs = get_data(args.data_path,
-                                                                              args.no_sample,
-                                                                              args.normalize)
+    train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter = get_data(args.train_path,
+                                                                                            args.no_sample,
+                                                                                            args.normalize)
+    val_inputs, val_cls_label, val_deposit_thickness, val_inner_diameter = get_data(args.val_path,
+                                                                                    args.no_sample,
+                                                                                    args.normalize)
 
     # Create Dataloader
 
-    train_dataset = TensorDataset(torch.FloatTensor(train_x),
-                                  torch.FloatTensor(train_y_cls),
-                                  torch.FloatTensor(train_y_rgs))
-    val_dataset = TensorDataset(torch.FloatTensor(val_x),
-                                torch.FloatTensor(val_y_cls),
-                                torch.FloatTensor(val_y_rgs))
+    train_dataset = TensorDataset(torch.FloatTensor(train_inputs),
+                                  torch.FloatTensor(train_cls_label),
+                                  torch.FloatTensor(train_deposit_thickness),
+                                  torch.FloatTensor(train_inner_diameter))
+    val_dataset = TensorDataset(torch.FloatTensor(val_inputs),
+                                torch.FloatTensor(val_cls_label),
+                                torch.FloatTensor(val_deposit_thickness),
+                                torch.FloatTensor(val_inner_diameter))
     '''
     train_dataset = BruceDataset(inputs=train_x, cls_labels=train_y_cls, rgs_labels=train_y_rgs)
     '''
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+
+    # Calculate training steps for learning rate scheduler
+    steps_per_epoch = train_inputs // args.batch_size
+    args.total_training_step = steps_per_epoch * args.num_epoch
+    args.warming_step = 10000
+
+    # Generate model
+    model = BruceModel(**args.__dict__)
+    logger.info(model)
 
     # Init Logger
     MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
@@ -179,7 +182,7 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
                                         mode='min',
-                                        patience=8,
+                                        patience=20,
                                         verbose=True)
     model_checker = ModelCheckpoint(monitor='val/rgs_loss',
                                     mode='min',
@@ -191,7 +194,7 @@ if __name__ == '__main__':
     trainer = pl.Trainer(
         logger=wandb_logger,
         callbacks=[lr_monitor, early_stop_callback, model_checker],
-        #profiler=profiler,
+        # profiler=profiler,
         gpus=args.gpu,
         log_every_n_steps=args.log_step,
         max_epochs=args.num_epoch,
@@ -199,7 +202,7 @@ if __name__ == '__main__':
     )
 
     if args.find_lr:
-        lr_finder = trainer.tuner.lr_find(model, train_dataloader, val_dataloader,  min_lr=1e-5, max_lr=0.1)
+        lr_finder = trainer.tuner.lr_find(model, train_dataloader, val_dataloader, min_lr=1e-5, max_lr=0.1)
         print(lr_finder.results)
 
         fig = lr_finder.plot(suggest=True, show=True)
@@ -210,7 +213,7 @@ if __name__ == '__main__':
 
     # Fit training data
     trainer.fit(model, train_dataloader, val_dataloader)
-    model.load_from_checkpoint(model_checker.best_model_path)   # load best model checkpoint
+    model.load_from_checkpoint(model_checker.best_model_path)  # load best model checkpoint
 
     # Store prediction from best model
     y_trues, cls, predicts, final_predicts = get_predict(model,
@@ -218,5 +221,3 @@ if __name__ == '__main__':
     df = pd.DataFrame(np.array([y_trues, cls, predicts, final_predicts]).T,
                       columns=['y_true', 'cls', 'rgs', 'final'])
     df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
-
-
