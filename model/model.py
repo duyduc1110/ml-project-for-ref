@@ -5,6 +5,11 @@ import pytorch_lightning as pl
 from collections import OrderedDict
 
 
+def MAPE_loss(output, target):
+    t = torch.zeros(target.shape).fill_(0.5)
+    return torch.mean(torch.abs((target - output)/(torch.max(target, t))))
+
+
 class BruceCNNCell(nn.Module):
     def __init__(self, **kwargs):
         super(BruceCNNCell, self).__init__()
@@ -199,10 +204,11 @@ class BruceModel(pl.LightningModule):
             self.core_out *= 2
 
         # FCN Layer
+        act_fn = nn.Tanh if self.act == 'tanh' else nn.GELU
         self.fc1 = nn.Linear(self.core_out, self.core_out * 4)
-        self.fc1_act = nn.GELU()
+        self.fc1_act = act_fn()
         self.fc2 = nn.Linear(self.core_out * 4, self.core_out)
-        self.fc2_act = nn.GELU()
+        self.fc2_act = act_fn()
         self.layernorm_fcn = nn.LayerNorm(self.core_out)
         self.drop_fcn = nn.Dropout(0.1)
 
@@ -217,7 +223,7 @@ class BruceModel(pl.LightningModule):
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
-        self.rgs_loss_fn = nn.MSELoss() if self.rgs_loss == 'mse' else nn.L1Loss()
+        self.rgs_loss_fn = nn.L1Loss() if self.rgs_loss == 'mae' else MAPE_loss
 
         '''
         # Metrics to log
@@ -268,7 +274,9 @@ class BruceModel(pl.LightningModule):
         return cls_out, dt_out, id_out
 
     def loss(self, cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels):
-        return self.cls_loss_fn(cls_out, cls_labels.float()), self.rgs_loss_fn(dt_out, dt_labels), self.rgs_loss_fn(id_out, id_labels)
+        return self.cls_loss_fn(cls_out, cls_labels.float()), \
+               self.rgs_loss_fn(dt_out, dt_labels), \
+               self.rgs_loss_fn(id_out, id_labels)
 
     def training_step(self, batch, batch_idx):
         if self.trainer.global_step == 0:
