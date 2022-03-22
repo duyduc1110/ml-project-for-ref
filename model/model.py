@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 
 def MAPE_loss(output, target):
-    t = torch.zeros(target.shape).fill_(0.5)
+    t = torch.zeros(target.shape).fill_(0.5).to(target.device)
     return torch.mean(torch.abs((target - output)/(torch.max(target, t))))
 
 
