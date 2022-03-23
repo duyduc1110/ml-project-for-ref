@@ -362,6 +362,7 @@ class BruceModel(pl.LightningModule):
         return items
 
     def configure_optimizers(self):
+
         def get_lr_scheduler(opt, factor, num_warmup_steps, num_training_steps, last_epoch=-1):
             def lr_lambda(current_step: int):
                 if current_step < num_warmup_steps:
@@ -372,16 +373,18 @@ class BruceModel(pl.LightningModule):
                 )
 
             return torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda, last_epoch)
+
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        scheduler = transformers.get_linear_schedule_with_warmup(optimizer,
-                                                                 num_warmup_steps=self.warming_step,
-                                                                 num_training_steps=self.total_training_step - self.warming_step)
 
         if self.scheduler:
             return {
                 'optimizer': optimizer,
                 'lr_scheduler': {
-                    'scheduler': scheduler,
+                    'scheduler': transformers.get_linear_schedule_with_warmup(
+                        optimizer,
+                        num_warmup_steps=self.warming_step,
+                        num_training_steps=self.total_training_step - self.warming_step
+                    ),
                     'interval': 'step',
                 }
             }
