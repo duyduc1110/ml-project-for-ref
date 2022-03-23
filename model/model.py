@@ -3,8 +3,9 @@ import pandas as pd
 import torch, torchmetrics, wandb, transformers
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import pytorch_lightning as pl, matplotlib.pyplot as plt
 from collections import OrderedDict
+from pytorch_lightning.loggers import WandbLogger
 
 
 def SMAPE_loss(output, target):
@@ -346,33 +347,39 @@ class BruceModel(pl.LightningModule):
         self.true_values = []
         self.predicted_values = []
 
-    def save_df(self, logger):
+    def on_validation_epoch_end(self) -> None:
         df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
                           columns=['y_true', 'y_predict'])
-        wandb.Table.MAX_ROWS = 1000000
-        logger.experiment.log({'prediction_table': wandb.Table(dataframe=df)})
+        df.to_csv('temp_prediction.csv', index=False) # Save as csv
 
-    def get_metrics(self):
-        # don't show the version number
-        items = super().get_metrics()
-        items.pop("v_num", None)
-        return items
+        df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30)) # Create plot
+        plt.savefig('temp_histogram.jpg')
+
+
+        self.true_values = []
+        self.predicted_values = []
+
+    def save_df(self, logger: WandbLogger, current_epoch=None):
+        '''
+        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
+                          columns=['y_true', 'y_predict'])
+        '''
+
+        # Save Result as Table
+        wandb.Table.MAX_ROWS = 1000000
+        artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
+        artifact.add(
+            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
+            name='prediction_values'
+        )
+        logger.experiment.log_artifact(artifact, aliases=['best'])
+
+        # Save histogram to Wandb
+        im = plt.imread('temp_histogram.jpg')
+        logger.experiment.log({"img": [wandb.Image(im)]})
 
     def configure_optimizers(self):
-
-        def get_lr_scheduler(opt, factor, num_warmup_steps, num_training_steps, last_epoch=-1):
-            def lr_lambda(current_step: int):
-                if current_step < num_warmup_steps:
-                    return max(factor, float(current_step)) / float(max(1, num_warmup_steps))
-                return max(
-                    factor,
-                    float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
-                )
-
-            return torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda, last_epoch)
-
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-
         if self.scheduler:
             return {
                 'optimizer': optimizer,

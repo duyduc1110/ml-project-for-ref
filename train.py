@@ -44,14 +44,29 @@ class BruceDataset(Dataset):
 
 
 class BruceModelCheckpoint(ModelCheckpoint):
+    '''
     def save_checkpoint(self, trainer: pl.Trainer):
         super(BruceModelCheckpoint, self).save_checkpoint(trainer)
         trainer.model.save_df(trainer.logger)
+    '''
 
-'''
+    def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
+        super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
+        trainer.model.save_df(trainer.logger)
+
+
 class BruceLogger(WandbLogger):
-    def after_save_checkpoint(self, checkpoint_callback: ModelCheckpoint):
-'''
+    '''
+    def _scan_and_log_checkpoints(self, checkpoint_callback) -> None:
+        super(BruceLogger, self)._scan_and_log_checkpoints(checkpoint_callback)
+        artifact = wandb.Artifact(name=f'run-{self.experiment.id}', type='prediction')
+        artifact.add(
+            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
+            name='predictions',
+        )
+        wandb.log_artifact(artifact, aliases=['best'])
+        print('\n\nLOG ARTIFACT IN _SCAN_AND_LOG_CHECKPOINT\n\n')
+    '''
 
 
 def preprocessing_data(arr, normalize=True):
@@ -65,7 +80,7 @@ def preprocessing_data(arr, normalize=True):
 
 def get_data(path, no_sample, normalize=True):
     f = h5py.File(path, 'r')
-    idx = -1 if no_sample else 2000
+    idx = -1 if no_sample else 10000
 
     inputs = f.get('inputs')[:idx]
     inputs = preprocessing_data(inputs, normalize)
@@ -188,7 +203,7 @@ if __name__ == '__main__':
 
     # Generate model
     MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
+    wandb_logger = BruceLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
     model = BruceModel(**args.__dict__)
     logger.info(model)
 
