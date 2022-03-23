@@ -1,3 +1,5 @@
+import numpy as np
+import pandas as pd
 import torch, torchmetrics, wandb, transformers
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +8,7 @@ from collections import OrderedDict
 
 
 def MAPE_loss(output, target):
-    t = torch.zeros(target.shape).fill_(0.5).to(target.device)
+    t = torch.zeros(target.shape).fill_(0.25).to(target.device)
     return torch.mean(torch.abs((target - output)/(torch.max(target, t))))
 
 
@@ -98,6 +100,7 @@ class BruceProcessingModule(nn.Module):
         super(BruceProcessingModule, self).__init__()
         self.processing_module = nn.Sequential(
             nn.Linear(524, num_feature),
+            nn.Tanh(),
             nn.Conv1d(1, out_channel, kernel_size=kernel_size, padding='same'),
             nn.BatchNorm1d(out_channel),
             nn.ReLU(inplace=True),
@@ -285,8 +288,6 @@ class BruceModel(pl.LightningModule):
         cls_out, dt_out, id_out = self(inputs)
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
-        #loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = (cls_loss + rgs_loss + id_loss) / 3
 
         # Log loss
         self.log('train/cls_loss', cls_loss.item(), prog_bar=False)
@@ -304,10 +305,11 @@ class BruceModel(pl.LightningModule):
         '''
 
         # Log train metrics
-        self.log('train/loss', loss.item())
         # self.log('train/acc', self.train_acc)
         # self.log('train/auc', self.train_auc)
 
+        # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
+        loss = cls_loss + rgs_loss + id_loss
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -319,7 +321,7 @@ class BruceModel(pl.LightningModule):
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = (cls_loss + rgs_loss + id_loss) / 3
+        loss = rgs_loss + id_loss
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
@@ -338,6 +340,27 @@ class BruceModel(pl.LightningModule):
         # self.log('val/acc', self.val_acc, prog_bar=False)
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
+        # Processing outputs
+        final_predicts = (cls_out >= 0.5) * dt_out
+        self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
+        self.predicted_values.extend(final_predicts.cpu().reshape(-1).tolist())
+
+    def on_validation_epoch_start(self) -> None:
+        self.true_values = []
+        self.predicted_values = []
+
+    def save_df(self, logger):
+        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
+                          columns=['y_true', 'y_predict'])
+        wandb.Table.MAX_ROWS = 1000000
+        logger.experiment.log({'prediction_table': wandb.Table(dataframe=df)})
+
+    def get_metrics(self):
+        # don't show the version number
+        items = super().get_metrics()
+        items.pop("v_num", None)
+        return items
+
     def configure_optimizers(self):
         def get_lr_scheduler(opt, factor, num_warmup_steps, num_training_steps, last_epoch=-1):
             def lr_lambda(current_step: int):
@@ -353,10 +376,14 @@ class BruceModel(pl.LightningModule):
         scheduler = transformers.get_linear_schedule_with_warmup(optimizer,
                                                                  num_warmup_steps=self.warming_step,
                                                                  num_training_steps=self.total_training_step - self.warming_step)
-        return {
-            'optimizer': optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'interval': 'step',
+
+        if self.scheduler:
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'step',
+                }
             }
-        }
+        else:
+            return optimizer

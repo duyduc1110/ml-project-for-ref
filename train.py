@@ -3,6 +3,7 @@ import torch, torchmetrics
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import wandb
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from model import BruceModel
@@ -11,6 +12,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profiler import AdvancedProfiler
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from datetime import datetime
+from weakref import ReferenceType
 
 
 class ParseAction(argparse.Action):
@@ -40,12 +42,23 @@ class BruceDataset(Dataset):
                    torch.tensor(self.rgs_labels[idx: idx + self.seq_len])
 
 
+class BruceModelCheckpoint(ModelCheckpoint):
+    def save_checkpoint(self, trainer: pl.Trainer):
+        super(BruceModelCheckpoint, self).save_checkpoint(trainer)
+        trainer.model.save_df(trainer.logger)
+
+'''
+class BruceLogger(WandbLogger):
+    def after_save_checkpoint(self, checkpoint_callback: ModelCheckpoint):
+'''
+
+
 def preprocessing_data(arr, normalize=True):
     if normalize:
         # Data normalization
         return (arr - arr.min()) / (arr.max() - arr.min())
     else:
-        # Data standardlization
+        # Data standardization
         return (arr - arr.mean()) / arr.std()
 
 
@@ -72,6 +85,7 @@ def get_args():
     model_parser.add_argument('--val_path', default='val.h5', type=str, help='Validation data path')
     model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
     model_parser.add_argument('--warming_step', default=1e5, type=int, help='Warming step')
+    model_parser.add_argument('--scheduler', action='store_true', help='Use Learning Rate Scheduler')
     model_parser.add_argument('--rgs_loss', default='mape', type=str, help="Regression loss, default is MAE")
     model_parser.add_argument('--normalize', default=0, type=int, help='Normalize data if used, otherwise standardize ')
     model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
@@ -172,12 +186,12 @@ if __name__ == '__main__':
     args.total_training_step = steps_per_epoch * args.num_epoch
 
     # Generate model
+    MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
+    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
     model = BruceModel(**args.__dict__)
     logger.info(model)
 
     # Init Logger
-    MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME)
     wandb_logger.watch(model, log='all')
 
     # Init Callbacks
@@ -187,11 +201,11 @@ if __name__ == '__main__':
                                         mode='min',
                                         patience=20,
                                         verbose=True)
-    model_checker = ModelCheckpoint(monitor='val/rgs_loss',
-                                    mode='min',
-                                    dirpath='./model_checkpoint/',
-                                    filename=MODEL_NAME + '_{epoch:02d}-{val_rgs_loss:.2f}',
-                                    verbose=True)
+    model_checker = BruceModelCheckpoint(monitor='val/rgs_loss',
+                                         mode='min',
+                                         dirpath='./model_checkpoint/',
+                                         filename=MODEL_NAME + '_{epoch:02d}-{val_rgs_loss:.2f}',
+                                         verbose=True)
 
     # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
@@ -224,3 +238,8 @@ if __name__ == '__main__':
     df = pd.DataFrame(np.array([dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts]).T,
                       columns=['dt_trues', 'id_trues', 'cls', 'dt_predicts', 'id_predicts', 'final_predicts'])
     df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
+
+    '''
+    wandb.Table.MAX_ROWS = 1000000
+    wandb_logger.experiment.log({'predictions': wandb.Table(dataframe=df)})
+    '''
