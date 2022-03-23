@@ -221,7 +221,7 @@ class BruceModel(pl.LightningModule):
 
         # Regression output
         self.cls_embed = nn.Embedding(2, self.core_out, padding_idx=0)
-        self.layernorm_rgs = nn.LayerNorm(self.core_out)
+        #self.layernorm_rgs = nn.LayerNorm(self.core_out)
         self.dt_out = nn.Linear(self.core_out, 1)
         self.id_out = nn.Linear(self.core_out, 1)
 
@@ -266,9 +266,9 @@ class BruceModel(pl.LightningModule):
         cls_out = self.cls_out(x)
 
         # Regression output
-        bi_cls = (cls_out > 0.5).squeeze().long()
+        bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
         cls_embed = self.cls_embed(bi_cls)
-        x = self.layernorm_rgs(x + cls_embed)
+        x = x + cls_embed
         dt_out = self.dt_out(x)
         id_out = self.id_out(x)
 
@@ -339,7 +339,7 @@ class BruceModel(pl.LightningModule):
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
         # Processing outputs
-        final_predicts = (cls_out >= 0.5) * dt_out
+        final_predicts = (torch.sigmoid(cls_out) >= 0.5) * dt_out
         self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
         self.predicted_values.extend(final_predicts.cpu().reshape(-1).tolist())
 
