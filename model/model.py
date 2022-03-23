@@ -355,7 +355,6 @@ class BruceModel(pl.LightningModule):
         df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30)) # Create plot
         plt.savefig('temp_histogram.jpg')
 
-
         self.true_values = []
         self.predicted_values = []
 
