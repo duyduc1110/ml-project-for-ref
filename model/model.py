@@ -7,9 +7,8 @@ import pytorch_lightning as pl
 from collections import OrderedDict
 
 
-def MAPE_loss(output, target):
-    t = torch.zeros(target.shape).fill_(0.25).to(target.device)
-    return torch.mean(torch.abs((target - output)/(torch.max(target, t))))
+def SMAPE_loss(output, target):
+    return torch.abs(output - target).sum() / (output + target).sum()
 
 
 class BruceCNNCell(nn.Module):
@@ -227,7 +226,7 @@ class BruceModel(pl.LightningModule):
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
-        self.rgs_loss_fn = nn.L1Loss() if self.rgs_loss == 'mae' else MAPE_loss
+        self.rgs_loss_fn = nn.L1Loss() if self.rgs_loss == 'mae' else SMAPE_loss
 
         '''
         # Metrics to log
