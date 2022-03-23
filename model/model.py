@@ -208,12 +208,13 @@ class BruceModel(pl.LightningModule):
 
         # FCN Layer
         act_fn = nn.Tanh if self.act == 'tanh' else nn.GELU
-        self.fc1 = nn.Linear(self.core_out, self.core_out * 4)
-        self.fc1_act = act_fn()
-        self.fc2 = nn.Linear(self.core_out * 4, self.core_out)
-        self.fc2_act = act_fn()
-        self.layernorm_fcn = nn.LayerNorm(self.core_out)
-        self.drop_fcn = nn.Dropout(0.1)
+        self.intermediate_layer = nn.Sequential(
+            nn.Linear(self.core_out, self.core_out * 4),
+            act_fn(),
+            nn.Linear(self.core_out * 4, self.core_out),
+            act_fn(),
+            nn.Dropout(0.1),
+        )
 
         # Cls output
         self.cls_out = nn.Linear(self.core_out, 1)
@@ -248,7 +249,7 @@ class BruceModel(pl.LightningModule):
             module.weight.data.normal_(mean=0.0, std=self.initializer_range)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, nn.LayerNorm):
+        elif isinstance(module, nn.LayerNorm) or isinstance(module, nn.BatchNorm1d):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
@@ -259,10 +260,7 @@ class BruceModel(pl.LightningModule):
         x = self.core(inputs)
 
         # FCN
-        t = self.fc1_act(self.fc1(x))
-        t = self.fc2_act(self.fc2(t))
-        x = self.layernorm_fcn(x + t)
-        x = self.drop_fcn(x)
+        x = self.intermediate_layer(x)
 
         # Classification output
         cls_out = self.cls_out(x)
@@ -270,9 +268,9 @@ class BruceModel(pl.LightningModule):
         # Regression output
         bi_cls = (cls_out > 0.5).squeeze().long()
         cls_embed = self.cls_embed(bi_cls)
-        rgs_out = self.layernorm_rgs(cls_out + cls_embed)
-        dt_out = self.dt_out(rgs_out)
-        id_out = self.id_out(rgs_out)
+        x = self.layernorm_rgs(x + cls_embed)
+        dt_out = self.dt_out(x)
+        id_out = self.id_out(x)
 
         return cls_out, dt_out, id_out
 
