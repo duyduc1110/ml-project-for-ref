@@ -1,4 +1,5 @@
 import h5py, logging, argparse, getpass, pandas as pd, numpy as np
+import matplotlib.pyplot as plt
 import torch, torchmetrics
 import torch.nn as nn
 import torch.nn.functional as F
@@ -219,10 +220,11 @@ if __name__ == '__main__':
     )
 
     if args.find_lr:
-        lr_finder = trainer.tuner.lr_find(model, train_dataloader, val_dataloader, min_lr=1e-5, max_lr=0.1)
+        lr_finder = trainer.tuner.lr_find(model, train_dataloader, val_dataloader, min_lr=1e-5, max_lr=0.1, early_stop_threshold=100)
         print(lr_finder.results)
 
-        fig = lr_finder.plot(suggest=True, show=True)
+        fig = lr_finder.plot(suggest=True, show=False)
+        plt.savefig('lr_finder.png')
 
         new_lr = lr_finder.suggestion()
         print('Suggested learning rate: ', new_lr)
