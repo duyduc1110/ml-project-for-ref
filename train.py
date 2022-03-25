@@ -202,11 +202,11 @@ if __name__ == '__main__':
     # Init Callbacks
     profiler = AdvancedProfiler()
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
+    early_stop_callback = EarlyStopping(monitor='val/rgs_loss' if not args.cls_only else 'val/cls_loss',
                                         mode='min',
                                         patience=50,
                                         verbose=True)
-    model_checker = BruceModelCheckpoint(monitor='val/rgs_loss',
+    model_checker = BruceModelCheckpoint(monitor='val/rgs_loss' if not args.cls_only else 'val/cls_loss',
                                          mode='min',
                                          dirpath='./model_checkpoint/',
                                          filename=MODEL_NAME + '_{epoch:02d}',
