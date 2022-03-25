@@ -44,14 +44,13 @@ class BruceDataset(Dataset):
 
 
 class BruceModelCheckpoint(ModelCheckpoint):
-    pass
     # def save_checkpoint(self, trainer: pl.Trainer):
     #     super(BruceModelCheckpoint, self).save_checkpoint(trainer)
     #     trainer.model.save_df(trainer.logger)
 
-    # def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
-    #     super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
-    #     trainer.model.save_df(trainer.logger, trainer.current_epoch)
+    def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
+        super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
+        trainer.model.save_df(trainer.logger, trainer.current_epoch)
 
 
 def preprocessing_data(arr, normalize=True):
@@ -81,7 +80,7 @@ def get_args():
 
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
-    model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, att')
+    model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, unet')
     model_parser.add_argument('--train_path', default='train.h5', type=str, help='Train data path')
     model_parser.add_argument('--val_path', default='val.h5', type=str, help='Validation data path')
     model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
@@ -187,7 +186,7 @@ if __name__ == '__main__':
     args.total_training_step = steps_per_epoch * args.num_epoch
 
     # Generate model
-    MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
+    MODEL_NAME = f'{args.backbone.upper()}-{DATETIME_NOW}_{getpass.getuser()}'
     wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
     model = BruceModel(**args.__dict__)
     logger.info(model)

@@ -262,10 +262,8 @@ class BruceModel(pl.LightningModule):
         x = self.intermediate_layer(x)
 
         # Classification output
-        outputs = self.output_layer(x)
-        cls_out = outputs[:, 0].reshape(-1, 1)
-        dt_out = outputs[:, 1].reshape(-1, 1)
-        id_out = outputs[:, 2].reshape(-1, 1)
+        outputs = self.output_layer(x).unsqueeze(0)
+        cls_out, dt_out, id_out = outputs.T
 
         # # Regression output
         # bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
@@ -358,8 +356,8 @@ class BruceModel(pl.LightningModule):
 
         self.logger.experiment.log(log_dict)
 
-        # df.to_csv('temp_prediction.csv', index=False) # Save as csv
-        #
+        df.to_csv('temp_prediction.csv', index=False) # Save as csv
+
         # df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
         # plt.savefig('temp_histogram.jpg')
         #
@@ -367,24 +365,16 @@ class BruceModel(pl.LightningModule):
         # self.predicted_values = []
 
     def save_df(self, logger: WandbLogger, current_epoch=None):
-        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
-                          columns=['y_true', 'y_predict'])
+        df = pd.read_csv('temp_prediction.csv')
 
-        # log_dict = {}
-        # for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
-        #     log_dict[f'hist/{k}'] = wandb.Histogram(df[df.y_true == k].y_predict.values)
-        # log_dict['epoch'] = current_epoch
-        #
-        # logger.experiment.log(log_dict)
-
-        # # Save Result as Table
-        # wandb.Table.MAX_ROWS = 1000000
-        # artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
-        # artifact.add(
-        #     wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
-        #     name='prediction_values'
-        # )
-        # logger.experiment.log_artifact(artifact, aliases=['best'])
+        # Save Result as Table
+        wandb.Table.MAX_ROWS = 1000000
+        artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
+        artifact.add(
+            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
+            name='prediction_values'
+        )
+        logger.experiment.log_artifact(artifact, aliases=['best'])
         #
         # # Save histogram to Wandb
         # im = plt.imread('temp_histogram.jpg')
