@@ -360,7 +360,7 @@ class BruceModel(pl.LightningModule):
         log_dict = {}
         for k in possible_true:
             hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
-            log_dict[f'hist/{k}'] = wandb.Histogram(np_histogram=hist_data)
+            log_dict[f'hist/{str(k)}'] = wandb.Histogram(np_histogram=hist_data)
         log_dict['epoch'] = self.trainer.current_epoch
 
         self.logger.experiment.log(log_dict)
