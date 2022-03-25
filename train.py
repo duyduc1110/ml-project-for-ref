@@ -44,29 +44,14 @@ class BruceDataset(Dataset):
 
 
 class BruceModelCheckpoint(ModelCheckpoint):
-    '''
-    def save_checkpoint(self, trainer: pl.Trainer):
-        super(BruceModelCheckpoint, self).save_checkpoint(trainer)
-        trainer.model.save_df(trainer.logger)
-    '''
+    pass
+    # def save_checkpoint(self, trainer: pl.Trainer):
+    #     super(BruceModelCheckpoint, self).save_checkpoint(trainer)
+    #     trainer.model.save_df(trainer.logger)
 
-    def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
-        super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
-        trainer.model.save_df(trainer.logger, trainer.current_epoch)
-
-
-class BruceLogger(WandbLogger):
-    '''
-    def _scan_and_log_checkpoints(self, checkpoint_callback) -> None:
-        super(BruceLogger, self)._scan_and_log_checkpoints(checkpoint_callback)
-        artifact = wandb.Artifact(name=f'run-{self.experiment.id}', type='prediction')
-        artifact.add(
-            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
-            name='predictions',
-        )
-        wandb.log_artifact(artifact, aliases=['best'])
-        print('\n\nLOG ARTIFACT IN _SCAN_AND_LOG_CHECKPOINT\n\n')
-    '''
+    # def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
+    #     super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
+    #     trainer.model.save_df(trainer.logger, trainer.current_epoch)
 
 
 def preprocessing_data(arr, normalize=True):
@@ -203,7 +188,7 @@ if __name__ == '__main__':
 
     # Generate model
     MODEL_NAME = f'CNN-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = BruceLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
+    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
     model = BruceModel(**args.__dict__)
     logger.info(model)
 

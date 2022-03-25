@@ -338,35 +338,44 @@ class BruceModel(pl.LightningModule):
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
         # Processing outputs
-        final_predicts = (torch.sigmoid(cls_out) >= 0.5) * dt_out
+        # final_predicts = (torch.sigmoid(cls_out) >= 0.5) * dt_out # Use this for classification
         self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
-        self.predicted_values.extend(final_predicts.cpu().reshape(-1).tolist())
+        self.predicted_values.extend(dt_out.cpu().reshape(-1).tolist())
 
     def on_validation_epoch_start(self) -> None:
         self.true_values = []
         self.predicted_values = []
 
-    # def on_validation_epoch_end(self) -> None:
-    #     df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
-    #                       columns=['y_true', 'y_predict'])
-    #     df.to_csv('temp_prediction.csv', index=False) # Save as csv
-    #
-    #     df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
-    #     plt.savefig('temp_histogram.jpg')
-    #
-    #     self.true_values = []
-    #     self.predicted_values = []
-
-    def save_df(self, logger: WandbLogger, current_epoch=None):
+    def on_validation_epoch_end(self) -> None:
         df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
                           columns=['y_true', 'y_predict'])
 
         log_dict = {}
         for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
-            log_dict[f'hist/{k}'] = wandb.Histogram(df[df.y_true == k].y_predict.values)
-        log_dict['epoch'] = current_epoch
+            hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 4.0), bins=8)
+            log_dict[f'hist/{k}'] = wandb.Histogram(np_histogram=hist_data)
+        log_dict['epoch'] = self.trainer.current_epoch
 
-        logger.experiment.log(log_dict)
+        self.logger.experiment.log(log_dict)
+
+        # df.to_csv('temp_prediction.csv', index=False) # Save as csv
+        #
+        # df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
+        # plt.savefig('temp_histogram.jpg')
+        #
+        # self.true_values = []
+        # self.predicted_values = []
+
+    def save_df(self, logger: WandbLogger, current_epoch=None):
+        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
+                          columns=['y_true', 'y_predict'])
+
+        # log_dict = {}
+        # for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
+        #     log_dict[f'hist/{k}'] = wandb.Histogram(df[df.y_true == k].y_predict.values)
+        # log_dict['epoch'] = current_epoch
+        #
+        # logger.experiment.log(log_dict)
 
         # # Save Result as Table
         # wandb.Table.MAX_ROWS = 1000000
