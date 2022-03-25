@@ -204,7 +204,7 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor(logging_interval='step')
     early_stop_callback = EarlyStopping(monitor='val/rgs_loss' if not args.cls_only else 'val/cls_loss',
                                         mode='min',
-                                        patience=50,
+                                        patience=1000,
                                         verbose=True)
     model_checker = BruceModelCheckpoint(monitor='val/rgs_loss' if not args.cls_only else 'val/cls_loss',
                                          mode='min',
