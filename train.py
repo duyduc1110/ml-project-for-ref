@@ -69,7 +69,7 @@ def get_data(path, no_sample, normalize=True):
     inputs = f.get('inputs')[:idx]
     inputs = preprocessing_data(inputs, normalize)
     cls_label = f.get('cls_label')[:idx]
-    deposit_thickness = f.get('deposit_thickness')[:idx]
+    deposit_thickness = f.get('deposit_thickness')[:idx] / 10
     inner_diameter = f.get('inner_diameter')[:idx]
 
     return inputs, cls_label, deposit_thickness, inner_diameter

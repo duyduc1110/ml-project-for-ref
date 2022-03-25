@@ -12,6 +12,11 @@ def SMAPE_loss(output, target):
     return torch.abs(output - target).sum() / (output + target).sum()
 
 
+class DumpCore(nn.Module):
+    def forward(self, x):
+        return x
+
+
 class BruceCNNCell(nn.Module):
     def __init__(self, **kwargs):
         super(BruceCNNCell, self).__init__()
@@ -203,6 +208,8 @@ class BruceModel(pl.LightningModule):
         elif kwargs['backbone'] == 'unet':
             self.core = BruceUNet(**kwargs)
             self.core_out *= 2
+        else:
+            self.core = nn.Sequential(nn.Linear(524, self.core_out), nn.GELU())
 
         # FCN Layer
         act_fn = nn.Tanh if self.act == 'tanh' else nn.GELU
@@ -350,7 +357,7 @@ class BruceModel(pl.LightningModule):
 
         log_dict = {}
         for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
-            hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 4.0), bins=8)
+            hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
             log_dict[f'hist/{k}'] = wandb.Histogram(np_histogram=hist_data)
         log_dict['epoch'] = self.trainer.current_epoch
 
@@ -386,7 +393,7 @@ class BruceModel(pl.LightningModule):
             return {
                 'optimizer': optimizer,
                 'lr_scheduler': {
-                    'scheduler': transformers.get_linear_schedule_with_warmup(
+                    'scheduler': transformers.get_cosine_schedule_with_warmup(
                         optimizer,
                         num_warmup_steps=self.warming_step,
                         num_training_steps=self.total_training_step - self.warming_step
