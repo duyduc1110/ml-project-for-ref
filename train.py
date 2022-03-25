@@ -92,9 +92,14 @@ def get_args():
     model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
     model_parser.add_argument('--act', default='tanh', type=str, help='Activation of intermediate layer')
     model_parser.add_argument('-sl', '--seq_len', default=32, type=int, help='Sequence len')
-    model_parser.add_argument('--cls_w', default=0.8, type=float, help='Classification weight')
     model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
     model_parser.add_argument('--initializer_range', default=0.02, type=float, help='Initializer range')
+
+    # Config loss to update
+    model_parser.add_argument('--cls_only', action='store_true', help='Only do classification')
+    model_parser.add_argument('--pos_weight', default=0.8, type=float, help='Classification weight')
+    model_parser.add_argument('--rgs_only', action='store_true', help='Only do regression')
+    model_parser.add_argument('--all_loss', action='store_true', help='Use classification and regression')
 
     # CNN args
     model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
@@ -151,7 +156,6 @@ DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
 if __name__ == '__main__':
     # Get arguments & logger
     args = get_args()
-    args.loss_weights = [args.cls_w, 1 - args.cls_w]  # set loss weights
     logging.basicConfig(level=args.logging_level)
     logger = logging.getLogger('model')
     logger.info(args.__dict__)

@@ -234,7 +234,7 @@ class BruceModel(pl.LightningModule):
         # self.id_out = nn.Linear(self.core_out, 1)
 
         # Loss function
-        self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
+        self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([self.pos_weight]))
         self.rgs_loss_fn = nn.L1Loss() if self.rgs_loss == 'mae' else SMAPE_loss
 
         # # Metrics to log
@@ -313,8 +313,12 @@ class BruceModel(pl.LightningModule):
         # self.log('train/auc', self.train_auc)
 
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = rgs_loss + id_loss
-        return loss
+        if self.cls_only:
+            return cls_loss
+        elif self.rgs_only:
+            return rgs_loss + id_loss
+        else:
+            return cls_loss + rgs_loss + id_loss
 
     def validation_step(self, batch, batch_idx):
         # Track best rgs loss
@@ -325,8 +329,12 @@ class BruceModel(pl.LightningModule):
         dt_out = (torch.sigmoid(cls_out) >= 0.5) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
-        # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = rgs_loss + id_loss
+        if self.cls_only:
+            loss = cls_loss
+        elif self.rgs_only:
+            loss = rgs_loss + id_loss
+        else:
+            loss = cls_loss + rgs_loss + id_loss
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
