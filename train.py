@@ -98,6 +98,7 @@ def get_args():
     # Config loss to update
     model_parser.add_argument('--cls_only', action='store_true', help='Only do classification')
     model_parser.add_argument('--pos_weight', default=0.8, type=float, help='Classification weight')
+    model_parser.add_argument('--threshold', default=0.5, type=float, help='Threshold for bin classification')
     model_parser.add_argument('--rgs_only', action='store_true', help='Only do regression')
     model_parser.add_argument('--all_loss', action='store_true', help='Use classification and regression')
 

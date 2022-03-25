@@ -291,7 +291,7 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
-        dt_out = (torch.sigmoid(cls_out) >= 0.5) * dt_out
+        dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
 
@@ -326,7 +326,7 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
-        dt_out = (torch.sigmoid(cls_out) >= 0.5) * dt_out
+        dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         if self.cls_only:
@@ -353,24 +353,32 @@ class BruceModel(pl.LightningModule):
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
         # Processing outputs
-         # Use this for classification
+        self.cls_outs.extend(torch.sigmoid(cls_out).cpu().reshape(-1).tolist())
         self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
         self.predicted_values.extend(dt_out.cpu().reshape(-1).tolist())
 
     def on_validation_epoch_start(self) -> None:
         self.true_values = []
         self.predicted_values = []
+        self.cls_outs = []
 
     def on_validation_epoch_end(self) -> None:
         df = pd.DataFrame({
             'y_true': torch.tensor(self.true_values).numpy(),
             'y_predict': torch.tensor(self.predicted_values).numpy(),
         })
+
         possible_true = df.y_true.unique()
         log_dict = {}
+
         for k in possible_true:
             hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
             log_dict[f'hist/{str(k)}'] = wandb.Histogram(np_histogram=hist_data)
+
+        log_dict['hist/cls'] = wandb.Histogram(
+            np_histogram=np.histogram(np.array(self.cls_outs), bins=4, range=(0.0, 1.0))
+        )
+
         log_dict['epoch'] = self.trainer.current_epoch
 
         self.logger.experiment.log(log_dict)
