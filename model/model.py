@@ -352,9 +352,11 @@ class BruceModel(pl.LightningModule):
         self.predicted_values = []
 
     def on_validation_epoch_end(self) -> None:
-        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
-                          columns=['y_true', 'y_predict'])
-        possible_true = set(df.y_true.values)
+        df = pd.DataFrame({
+            'y_true': torch.tensor(self.true_values).numpy(),
+            'y_predict': torch.tensor(self.predicted_values).numpy(),
+        })
+        possible_true = df.y_true.unique()
         log_dict = {}
         for k in possible_true:
             hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
