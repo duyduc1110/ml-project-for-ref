@@ -291,6 +291,7 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
+        dt_out = (torch.sigmoid(cls_out) >= 0.5) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
 
@@ -321,6 +322,7 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
+        dt_out = (torch.sigmoid(cls_out) >= 0.5) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
@@ -343,7 +345,7 @@ class BruceModel(pl.LightningModule):
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
         # Processing outputs
-        # final_predicts = (torch.sigmoid(cls_out) >= 0.5) * dt_out # Use this for classification
+         # Use this for classification
         self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
         self.predicted_values.extend(dt_out.cpu().reshape(-1).tolist())
 
