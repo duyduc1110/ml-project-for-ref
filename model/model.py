@@ -354,9 +354,9 @@ class BruceModel(pl.LightningModule):
     def on_validation_epoch_end(self) -> None:
         df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
                           columns=['y_true', 'y_predict'])
-
+        possible_true = set(df.y_true.values)
         log_dict = {}
-        for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
+        for k in possible_true:
             hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
             log_dict[f'hist/{k}'] = wandb.Histogram(np_histogram=hist_data)
         log_dict['epoch'] = self.trainer.current_epoch
