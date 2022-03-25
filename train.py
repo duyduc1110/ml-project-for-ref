@@ -215,12 +215,12 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor(logging_interval='step')
     early_stop_callback = EarlyStopping(monitor='val/rgs_loss',
                                         mode='min',
-                                        patience=20,
+                                        patience=50,
                                         verbose=True)
     model_checker = BruceModelCheckpoint(monitor='val/rgs_loss',
                                          mode='min',
                                          dirpath='./model_checkpoint/',
-                                         filename=MODEL_NAME + '_{epoch:02d}-{val_rgs_loss:.2f}',
+                                         filename=MODEL_NAME + '_{epoch:02d}',
                                          verbose=True)
 
     # Init Pytorch Lightning Profiler

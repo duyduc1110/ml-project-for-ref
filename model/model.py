@@ -59,11 +59,10 @@ class BruceStackedConv(nn.Module):
         self.stacked_conv = nn.Sequential(
             nn.Conv1d(in_channel, out_channel, kernel_size=kernel_size, padding='same'),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.1),
+            nn.GELU(),
             nn.Conv1d(out_channel, out_channel, kernel_size=kernel_size, padding='same'),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Dropout(0.1),
         )
 
@@ -103,11 +102,10 @@ class BruceProcessingModule(nn.Module):
             nn.Tanh(),
             nn.Conv1d(1, out_channel, kernel_size=kernel_size, padding='same'),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.1),
+            nn.GELU(),
             nn.Conv1d(out_channel, out_channel, kernel_size=kernel_size, padding='same'),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Dropout(0.1),
         )
 
@@ -147,7 +145,7 @@ class BruceUNet(nn.Module):
         self.unet_out = nn.Sequential(
             nn.Conv1d(output_channel[0], output_channel[0], kernel_size=kernel_size[0], padding='same'),
             nn.BatchNorm1d(output_channel[0]),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv1d(in_channels=output_channel[0], out_channels=2, kernel_size=1, padding='same'),
             nn.Dropout(0.1),
             nn.Flatten(),
@@ -216,6 +214,10 @@ class BruceModel(pl.LightningModule):
             nn.Dropout(0.1),
         )
 
+        # Ouputs layers
+        self.output_layer = nn.Linear(self.core_out, 3)
+
+        '''
         # Cls output
         self.cls_out = nn.Linear(self.core_out, 1)
 
@@ -224,6 +226,7 @@ class BruceModel(pl.LightningModule):
         #self.layernorm_rgs = nn.LayerNorm(self.core_out)
         self.dt_out = nn.Linear(self.core_out, 1)
         self.id_out = nn.Linear(self.core_out, 1)
+        '''
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
@@ -263,14 +266,19 @@ class BruceModel(pl.LightningModule):
         x = self.intermediate_layer(x)
 
         # Classification output
-        cls_out = self.cls_out(x)
+        outputs = self.output_layer(x)
+        cls_out = outputs[:, 0].reshape(-1, 1)
+        dt_out = outputs[:, 1].reshape(-1, 1)
+        id_out = outputs[:, 2].reshape(-1, 1)
 
+        '''
         # Regression output
         bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
         cls_embed = self.cls_embed(bi_cls)
         x = x + cls_embed
         dt_out = self.dt_out(x)
         id_out = self.id_out(x)
+        '''
 
         return cls_out, dt_out, id_out
 
@@ -307,7 +315,7 @@ class BruceModel(pl.LightningModule):
         # self.log('train/auc', self.train_auc)
 
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = cls_loss + rgs_loss + id_loss
+        loss = cls_loss*0.5 + rgs_loss + id_loss
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -319,12 +327,11 @@ class BruceModel(pl.LightningModule):
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = rgs_loss + id_loss
+        loss = cls_loss*0.5 + rgs_loss + id_loss
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('val/rgs_loss', rgs_loss.item(), prog_bar=True)
-        self.log('val_rgs_loss', rgs_loss.item(), prog_bar=False, logger=False)
         self.log('val/id_loss', id_loss.item(), prog_bar=False)
 
         '''
@@ -352,7 +359,7 @@ class BruceModel(pl.LightningModule):
                           columns=['y_true', 'y_predict'])
         df.to_csv('temp_prediction.csv', index=False) # Save as csv
 
-        df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30)) # Create plot
+        df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
         plt.savefig('temp_histogram.jpg')
 
         self.true_values = []
