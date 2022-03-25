@@ -193,7 +193,7 @@ class BruceModel(pl.LightningModule):
         super().__init__()
         self.__dict__.update(kwargs)
         self.save_hyperparameters()
-        #self.save_hyperparameters(kwargs)
+        # self.save_hyperparameters(kwargs)
 
         # Set core layer
         if kwargs['backbone'] == 'cnn':
@@ -217,28 +217,24 @@ class BruceModel(pl.LightningModule):
         # Ouputs layers
         self.output_layer = nn.Linear(self.core_out, 3)
 
-        '''
-        # Cls output
-        self.cls_out = nn.Linear(self.core_out, 1)
-
-        # Regression output
-        self.cls_embed = nn.Embedding(2, self.core_out, padding_idx=0)
-        #self.layernorm_rgs = nn.LayerNorm(self.core_out)
-        self.dt_out = nn.Linear(self.core_out, 1)
-        self.id_out = nn.Linear(self.core_out, 1)
-        '''
+        # # Cls output
+        # self.cls_out = nn.Linear(self.core_out, 1)
+        #
+        # # Regression output
+        # self.cls_embed = nn.Embedding(2, self.core_out, padding_idx=0)
+        # #self.layernorm_rgs = nn.LayerNorm(self.core_out)
+        # self.dt_out = nn.Linear(self.core_out, 1)
+        # self.id_out = nn.Linear(self.core_out, 1)
 
         # Loss function
         self.cls_loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.1275]))
         self.rgs_loss_fn = nn.L1Loss() if self.rgs_loss == 'mae' else SMAPE_loss
 
-        '''
-        # Metrics to log
-        self.train_acc = torchmetrics.Accuracy()
-        self.train_auc = torchmetrics.AUROC(pos_label=1)
-        self.val_acc = torchmetrics.Accuracy()
-        self.val_auc = torchmetrics.AUROC(pos_label=1)
-        '''
+        # # Metrics to log
+        # self.train_acc = torchmetrics.Accuracy()
+        # self.train_auc = torchmetrics.AUROC(pos_label=1)
+        # self.val_acc = torchmetrics.Accuracy()
+        # self.val_auc = torchmetrics.AUROC(pos_label=1)
 
         # Init weights
         self.apply(self._init_weights)
@@ -271,14 +267,12 @@ class BruceModel(pl.LightningModule):
         dt_out = outputs[:, 1].reshape(-1, 1)
         id_out = outputs[:, 2].reshape(-1, 1)
 
-        '''
-        # Regression output
-        bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
-        cls_embed = self.cls_embed(bi_cls)
-        x = x + cls_embed
-        dt_out = self.dt_out(x)
-        id_out = self.id_out(x)
-        '''
+        # # Regression output
+        # bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
+        # cls_embed = self.cls_embed(bi_cls)
+        # x = x + cls_embed
+        # dt_out = self.dt_out(x)
+        # id_out = self.id_out(x)
 
         return cls_out, dt_out, id_out
 
@@ -304,18 +298,16 @@ class BruceModel(pl.LightningModule):
         cur_lr = self.trainer.optimizers[0].param_groups[0]['lr']
         self.log("lr", cur_lr, logger=False, prog_bar=True, on_step=True, on_epoch=False)
 
-        '''
-        # Calculate train metrics
-        self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
-        self.train_auc(torch.sigmoid(cls_out), cls_labels.long())
-        '''
+        # # Calculate train metrics
+        # self.train_acc(torch.sigmoid(cls_out), cls_labels.long())
+        # self.train_auc(torch.sigmoid(cls_out), cls_labels.long())
 
         # Log train metrics
         # self.log('train/acc', self.train_acc)
         # self.log('train/auc', self.train_auc)
 
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = cls_loss*0.5 + rgs_loss + id_loss
+        loss = rgs_loss + id_loss
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -327,7 +319,7 @@ class BruceModel(pl.LightningModule):
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         # loss = cls_loss * self.loss_weights[0] + rgs_loss * self.loss_weights[1]
-        loss = cls_loss*0.5 + rgs_loss + id_loss
+        loss = rgs_loss + id_loss
 
         # Log loss
         self.log('val/cls_loss', cls_loss.item(), prog_bar=False)
@@ -354,35 +346,40 @@ class BruceModel(pl.LightningModule):
         self.true_values = []
         self.predicted_values = []
 
-    def on_validation_epoch_end(self) -> None:
-        df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
-                          columns=['y_true', 'y_predict'])
-        df.to_csv('temp_prediction.csv', index=False) # Save as csv
-
-        df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
-        plt.savefig('temp_histogram.jpg')
-
-        self.true_values = []
-        self.predicted_values = []
+    # def on_validation_epoch_end(self) -> None:
+    #     df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
+    #                       columns=['y_true', 'y_predict'])
+    #     df.to_csv('temp_prediction.csv', index=False) # Save as csv
+    #
+    #     df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
+    #     plt.savefig('temp_histogram.jpg')
+    #
+    #     self.true_values = []
+    #     self.predicted_values = []
 
     def save_df(self, logger: WandbLogger, current_epoch=None):
-        '''
         df = pd.DataFrame(data=np.array([self.true_values, self.predicted_values]).T,
                           columns=['y_true', 'y_predict'])
-        '''
 
-        # Save Result as Table
-        wandb.Table.MAX_ROWS = 1000000
-        artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
-        artifact.add(
-            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
-            name='prediction_values'
-        )
-        logger.experiment.log_artifact(artifact, aliases=['best'])
+        log_dict = {}
+        for k in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
+            log_dict[f'hist/{k}'] = wandb.Histogram(df[df.y_true == k].y_predict.values)
+        log_dict['epoch'] = current_epoch
 
-        # Save histogram to Wandb
-        im = plt.imread('temp_histogram.jpg')
-        logger.experiment.log({"img": [wandb.Image(im)]})
+        logger.experiment.log(log_dict)
+
+        # # Save Result as Table
+        # wandb.Table.MAX_ROWS = 1000000
+        # artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
+        # artifact.add(
+        #     wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
+        #     name='prediction_values'
+        # )
+        # logger.experiment.log_artifact(artifact, aliases=['best'])
+        #
+        # # Save histogram to Wandb
+        # im = plt.imread('temp_histogram.jpg')
+        # logger.experiment.log({"img": [wandb.Image(im)]}, commit=False)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)

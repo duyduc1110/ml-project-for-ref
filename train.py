@@ -52,7 +52,7 @@ class BruceModelCheckpoint(ModelCheckpoint):
 
     def _update_best_and_save(self, current, trainer: pl.Trainer, monitor_candidates):
         super(BruceModelCheckpoint, self)._update_best_and_save(current, trainer, monitor_candidates)
-        trainer.model.save_df(trainer.logger)
+        trainer.model.save_df(trainer.logger, trainer.current_epoch)
 
 
 class BruceLogger(WandbLogger):
