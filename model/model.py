@@ -291,7 +291,8 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
-        dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
+        if not self.rgs_only:
+            dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
 
@@ -326,7 +327,8 @@ class BruceModel(pl.LightningModule):
             wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
-        dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
+        if not self.rgs_only:
+            dt_out = (torch.sigmoid(cls_out) >= self.threshold) * dt_out
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         if self.cls_only:

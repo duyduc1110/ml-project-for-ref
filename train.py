@@ -210,7 +210,7 @@ if __name__ == '__main__':
                                          mode='min',
                                          dirpath='./model_checkpoint/',
                                          filename=MODEL_NAME + '_{epoch:02d}',
-                                         verbose=True)
+                                         verbose=False)
 
     # Init Pytorch Lightning Profiler
     trainer = pl.Trainer(
