@@ -279,7 +279,7 @@ class BruceModel(pl.LightningModule):
         # dt_out = self.dt_out(x)
         # id_out = self.id_out(x)
 
-        return cls_out, dt_out, id_out
+        return cls_out, torch.abs(dt_out), id_out
 
     def loss(self, cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels):
         return self.cls_loss_fn(cls_out, cls_labels.float()), \
