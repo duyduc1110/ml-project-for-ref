@@ -16,6 +16,14 @@ from datetime import datetime
 from weakref import ReferenceType
 
 
+INIT_LR = 1e-3
+EPOCH = 100
+SCHEDULER_EPOCH = 20
+SCHEDULER_RATE = 0.9
+CLASS_W = [{0: 0.85, 1: 0.15}, None]
+DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
+
+
 class ParseAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         print('%r %r %r' % (namespace, values, option_string))
@@ -53,26 +61,30 @@ class BruceModelCheckpoint(ModelCheckpoint):
         trainer.model.save_df(trainer.logger, trainer.current_epoch)
 
 
-def preprocessing_data(arr, normalize=True):
-    if normalize:
-        # Data normalization
-        return (arr - arr.min()) / (arr.max() - arr.min())
-    else:
-        # Data standardization
-        return (arr - arr.mean()) / arr.std()
+def preprocessing_data(arr, MEAN, STD, normalize=True):
+    # if normalize:
+    #     # Data normalization
+    #     return (arr - arr.min()) / (arr.max() - arr.min())
+    # else:
+
+    # Data standardization
+    if MEAN is None:
+        MEAN = arr.mean()
+        STD = arr.std()
+    return (arr - MEAN) / STD, MEAN, STD
 
 
-def get_data(path, no_sample, normalize=True):
+def get_data(path, no_sample, normalize=True, MEAN=None, STD=None):
     f = h5py.File(path, 'r')
     idx = -1 if no_sample else 10000
 
     inputs = f.get('inputs')[:idx]
-    inputs = preprocessing_data(inputs, normalize)
+    inputs, MEAN, STD = preprocessing_data(inputs, MEAN, STD, normalize)
     cls_label = f.get('cls_label')[:idx]
     deposit_thickness = f.get('deposit_thickness')[:idx] / 10
     inner_diameter = f.get('inner_diameter')[:idx]
 
-    return inputs, cls_label, deposit_thickness, inner_diameter
+    return inputs, cls_label, deposit_thickness, inner_diameter, MEAN, STD
 
 
 def get_args():
@@ -81,8 +93,8 @@ def get_args():
     # Model argumentss
     model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
     model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, unet')
-    model_parser.add_argument('--train_path', default='train.h5', type=str, help='Train data path')
-    model_parser.add_argument('--val_path', default='val.h5', type=str, help='Validation data path')
+    model_parser.add_argument('--train_path', default='train_new.h5', type=str, help='Train data path')
+    model_parser.add_argument('--val_path', default='val_new.h5', type=str, help='Validation data path')
     model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
     model_parser.add_argument('--warming_step', default=1e5, type=int, help='Warming step')
     model_parser.add_argument('--scheduler', action='store_true', help='Use Learning Rate Scheduler')
@@ -147,14 +159,8 @@ def get_predict(model, dataloaders):
     return dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts
 
 
-INIT_LR = 1e-3
-EPOCH = 100
-SCHEDULER_EPOCH = 20
-SCHEDULER_RATE = 0.9
-CLASS_W = [{0: 0.85, 1: 0.15}, None]
-DATETIME_NOW = datetime.now().strftime('%Y%m%d_%H%M')
-
 if __name__ == '__main__':
+    torch.random.manual_seed(42)
     # Get arguments & logger
     args = get_args()
     logging.basicConfig(level=args.logging_level)
@@ -162,12 +168,14 @@ if __name__ == '__main__':
     logger.info(args.__dict__)
 
     # Get data
-    train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter = get_data(args.train_path,
-                                                                                            args.no_sample,
-                                                                                            args.normalize)
-    val_inputs, val_cls_label, val_deposit_thickness, val_inner_diameter = get_data(args.val_path,
-                                                                                    args.no_sample,
-                                                                                    args.normalize)
+    train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, MEAN, STD = get_data(args.train_path,
+                                                                                                       args.no_sample,
+                                                                                                       args.normalize)
+    val_inputs, val_cls_label, val_deposit_thickness, val_inner_diameter, _, _ = get_data(args.val_path,
+                                                                                          args.no_sample,
+                                                                                          args.normalize,
+                                                                                          MEAN,
+                                                                                          STD)
 
     # Create Dataloader
 
@@ -198,6 +206,7 @@ if __name__ == '__main__':
 
     # Init Logger
     wandb_logger.watch(model, log='all')
+    wandb_logger.experiment.log_code('.')
 
     # Init Callbacks
     profiler = AdvancedProfiler()

@@ -176,21 +176,38 @@ class BruceUNet(nn.Module):
 
 
 class BruceLSTMMCell(nn.Module):
-    def __init__(self, args):
+    def __init__(self, hidden_size=64, num_lstm_layer=1, bi_di=False, **kwargs):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=524,
-                            hidden_size=args.hidden_size,
+        self.lstm = nn.LSTM(input_size=60,
+                            hidden_size=hidden_size,
                             batch_first=True,
-                            num_layers=args.num_lstm_layer,
+                            num_layers=num_lstm_layer,
                             dropout=0.1,
-                            bidirectional=args.bi_di,
+                            bidirectional=bi_di,
                             )
-        self.norm = nn.LayerNorm(args.hidden_size)
+        self.norm = nn.LayerNorm(hidden_size if not bi_di else hidden_size * 2)
 
     def forward(self, inputs):
-        x = self.lstm(inputs)
+        x = self.lstm(inputs)[0][:, -1, :]
         x = self.norm(x)
         return x
+
+
+class BruceLSTMBlock(nn.Module):
+    def __init__(self, **kwargs):
+        super(BruceLSTMBlock, self).__init__()
+        self.pos_embedding = nn.Embedding(10, 60)
+        self.pre_norm = nn.LayerNorm(60)
+        self.lstm = BruceLSTMMCell(**kwargs)
+
+    def forward(self, inputs):
+        b, f = inputs.shape
+        inputs = inputs.reshape(b, 10, 60)
+
+        pos_matrix = self.pos_embedding(torch.arange(10, device=inputs.device).expand(b, 10))
+        inputs = self.pre_norm(inputs + pos_matrix)
+
+        return self.lstm(inputs)
 
 
 class BruceModel(pl.LightningModule):
@@ -204,7 +221,8 @@ class BruceModel(pl.LightningModule):
         if kwargs['backbone'] == 'cnn':
             self.core = BruceCNNCell(**kwargs)
         elif kwargs['backbone'] == 'lstm':
-            self.core = BruceLSTMMCell(**kwargs)
+            self.core = BruceLSTMBlock(**kwargs)
+            self.core_out = self.hidden_size if not self.bi_di else self.hidden_size * 2
         elif kwargs['backbone'] == 'unet':
             self.core = BruceUNet(**kwargs)
             self.core_out *= 2
@@ -258,6 +276,12 @@ class BruceModel(pl.LightningModule):
         elif isinstance(module, nn.LayerNorm) or isinstance(module, nn.BatchNorm1d):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+        elif isinstance(module, nn.LSTM):
+            for k, t in module.named_parameters():
+                if 'weight' in k:
+                    t.data.normal_(mean=0.0, std=self.initializer_range)
+                elif 'bias' in k:
+                    t.data.zero_()
 
     def forward(self, inputs):
         b, f = inputs.shape
