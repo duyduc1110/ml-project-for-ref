@@ -90,42 +90,42 @@ def get_data(path, no_sample, normalize=True, MEAN=None, STD=None):
 def get_args():
     model_parser = argparse.ArgumentParser()
 
-    # Model argumentss
-    model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
-    model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, unet')
+    # ENVIRONMENT ARGUMENTS
     model_parser.add_argument('--train_path', default='train_new.h5', type=str, help='Train data path')
     model_parser.add_argument('--val_path', default='val_new.h5', type=str, help='Validation data path')
-    model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
-    model_parser.add_argument('--warming_step', default=1e5, type=int, help='Warming step')
-    model_parser.add_argument('--scheduler', action='store_true', help='Use Learning Rate Scheduler')
+    model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
+
+    # MODEL ARGUMENTS
     model_parser.add_argument('--rgs_loss', default='mape', type=str, help="Regression loss, default is MAE")
     model_parser.add_argument('--normalize', default=0, type=int, help='Normalize data if used, otherwise standardize ')
-    model_parser.add_argument('--no_sample', action='store_true', help='Sample to test data and model')
-    model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
-    model_parser.add_argument('--act', default='tanh', type=str, help='Activation of intermediate layer')
-    model_parser.add_argument('-sl', '--seq_len', default=32, type=int, help='Sequence len')
-    model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
-    model_parser.add_argument('--initializer_range', default=0.02, type=float, help='Initializer range')
-
-    # Config loss to update
     model_parser.add_argument('--cls_only', action='store_true', help='Only do classification')
     model_parser.add_argument('--pos_weight', default=0.8, type=float, help='Classification weight')
     model_parser.add_argument('--threshold', default=0.5, type=float, help='Threshold for bin classification')
     model_parser.add_argument('--rgs_only', action='store_true', help='Only do regression')
     model_parser.add_argument('--all_loss', action='store_true', help='Use classification and regression')
+    model_parser.add_argument('-bb', '--backbone', default='cnn', type=str, help='Model backbone: cnn, lstm, unet')
+    model_parser.add_argument('-sl', '--seq_len', default=32, type=int, help='Sequence len')
+    model_parser.add_argument('-co', '--core_out', default=256, type=int, help='Core output channel')
+    model_parser.add_argument('--act', default='tanh', type=str, help='Activation of intermediate layer')
+    model_parser.add_argument('--initializer_range', default=0.02, type=float, help='Initializer range')
 
-    # CNN args
+    ## CNN args
     model_parser.add_argument('-nc', '--num_cnn', default=1, type=int, help='Number of CNN Layer')
     model_parser.add_argument('-ks', '--kernel_size', default=[3], action=ParseAction,
                               help='Kernel size for each CNN layer')
     model_parser.add_argument('-oc', '--output_channel', default=[8], action=ParseAction,
                               help='Output channel for each CNN layer')
 
-    # LSTM args
+    ## LSTM/MLP args
     model_parser.add_argument('--bi_di', action='store_true', help='Bi-directional for RNN')
     model_parser.add_argument('--num_lstm_layer', default=1, type=int, help='Number of LSTM layer')
+    model_parser.add_argument('--hidden_size', default=256, type=int, help='Hidden size')
 
-    # Trainer arguments
+    # TRAINER ARGUMENTS
+    model_parser.add_argument('--logging_level', default='INFO', type=str, help="Set logging level")
+    model_parser.add_argument('--total_training_step', default=1e6, type=int, help='Training step')
+    model_parser.add_argument('--warming_step', default=1e5, type=int, help='Warming step')
+    model_parser.add_argument('--scheduler', action='store_true', help='Use Learning Rate Scheduler')
     model_parser.add_argument('--lr', default=1e-4, type=float, help='Learning rate')
     model_parser.add_argument('--find_lr', action='store_true', help='Find best learning rate')
     model_parser.add_argument('--batch_size', default=128, type=int, help='Batch size per device')
