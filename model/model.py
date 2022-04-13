@@ -241,7 +241,6 @@ class BruceModel(pl.LightningModule):
 
         # Ouputs layers
         self.output_layer = nn.Linear(self.core_out, 3)
-        self.threshold = nn.Parameter(torch.FloatTensor([0.5]))
 
         # # Cls output
         # self.cls_out = nn.Linear(self.core_out, 1)
@@ -296,7 +295,6 @@ class BruceModel(pl.LightningModule):
         # Classification output
         outputs = self.output_layer(x).unsqueeze(0)
         cls_out, dt_out, id_out = outputs.T
-        cls_out = torch.max(cls_out, self.threshold.expand_as(cls_out))
 
         # # Regression output
         # bi_cls = (torch.sigmoid(cls_out) > 0.5).squeeze().long()
@@ -320,9 +318,7 @@ class BruceModel(pl.LightningModule):
 
         # Using threshold
         cls_out = torch.sigmoid(cls_out)
-        cls_out = torch.max(cls_out, self.threshold.expand_as(cls_out))
-
-        dt_out *= (cls_out != self.threshold.expand_as(cls_out))
+        dt_out *= (cls_out >= 0.5)
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
 
@@ -330,7 +326,6 @@ class BruceModel(pl.LightningModule):
         self.log('train/cls_loss', cls_loss.item(), prog_bar=False)
         self.log('train/rgs_loss', rgs_loss.item(), prog_bar=True)
         self.log('train/id_loss', id_loss.item(), prog_bar=False)
-        self.log('th', self.threshold.item(), prog_bar=True, on_step=True)
 
         # Log learning rate to progress bar
         cur_lr = self.trainer.optimizers[0].param_groups[0]['lr']
@@ -361,9 +356,7 @@ class BruceModel(pl.LightningModule):
 
         # Using threshold
         cls_out = torch.sigmoid(cls_out)
-        cls_out = torch.max(cls_out, self.threshold.expand_as(cls_out))
-
-        dt_out *= (cls_out != self.threshold.expand_as(cls_out))
+        dt_out *= (cls_out >= 0.5)
 
         cls_loss, rgs_loss, id_loss = self.loss(cls_out, dt_out, id_out, cls_labels, dt_labels, id_labels)
         if self.cls_only:
