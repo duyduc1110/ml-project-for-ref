@@ -422,8 +422,6 @@ class BruceModel(pl.LightningModule):
         # self.predicted_values = []
 
     def save_df(self, logger: WandbLogger, current_epoch=None):
-        df = pd.read_csv('temp_prediction.csv')
-
         # Save Result as Table
         wandb.Table.MAX_ROWS = 1000000
         artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')

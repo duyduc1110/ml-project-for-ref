@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
     # Generate model
     MODEL_NAME = f'{args.backbone.upper()}-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model='all')
+    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model=True)
     model = BruceModel(**args.__dict__)
     logger.info(model)
 
@@ -219,6 +219,7 @@ if __name__ == '__main__':
                                          mode='min',
                                          dirpath='./model_checkpoint/',
                                          filename=MODEL_NAME + '_{epoch:02d}',
+                                         save_top_k=1,
                                          verbose=False)
 
     # Init Pytorch Lightning Profiler
