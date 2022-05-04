@@ -383,7 +383,7 @@ class BruceModel(pl.LightningModule):
         # self.log('val/auc', self.val_auc, prog_bar=False)
 
         # Processing outputs
-        self.cls_outs.extend(torch.sigmoid(cls_out).cpu().reshape(-1).tolist())
+        self.cls_outs.extend(cls_out.cpu().reshape(-1).tolist())
         self.true_values.extend(dt_labels.cpu().reshape(-1).tolist())
         self.predicted_values.extend(dt_out.cpu().reshape(-1).tolist())
 
