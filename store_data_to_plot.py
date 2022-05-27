@@ -8,7 +8,7 @@ predicts = []
 
 
 def consuming():
-    c = KafkaConsumer('pig_predictions', bootstrap_servers='10.8.8.105:9092', group_id='predict_consumer')
+    c = KafkaConsumer('pig-predictions', bootstrap_servers='10.8.8.105:9092', group_id='predict_consumer')
     for msg in c:
         mess = json.loads(msg.value)
         x.append(mess['time'])

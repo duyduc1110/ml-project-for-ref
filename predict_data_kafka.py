@@ -3,7 +3,8 @@ import json, threading, argparse
 from kafka import KafkaConsumer, KafkaProducer
 from model import BruceModel
 
-model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt', map_location='cpu')
+device = 'gpu:0' if torch.cuda.is_available() else 'cpu'
+model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt', map_location=device)
 model.eval()
 
 
@@ -16,7 +17,7 @@ def predict(inputs):
 
 
 def consuming():
-    c = KafkaConsumer('pig_push_data', bootstrap_servers=KAFKA_HOST, group_id='data_consumer')
+    c = KafkaConsumer('pig-push-data', bootstrap_servers=KAFKA_HOST, group_id='data_consumer')
     for msg in c:
         mess = json.loads(msg.value)
         print('** CONSUMER: Received request id {}'.format(mess['request_id']))
@@ -33,7 +34,7 @@ def update_prediction(request_id, target, prediction, time):
         'prediction': prediction,
         'time': time,
     }
-    p.send('pig_predictions', json.dumps(mess).encode('utf-8'))
+    p.send('pig-predictions', json.dumps(mess).encode('utf-8'))
     print('-- PRODUCER: Predict request id {} as {}, the true label is {}'.format(mess['request_id'],
                                                                                   mess['prediction'],
                                                                                   mess['target']))

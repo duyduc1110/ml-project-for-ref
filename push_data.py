@@ -11,6 +11,7 @@ def producing():
 
     producer = KafkaProducer(bootstrap_servers=KAFKA_HOST)
     for i in range(1000):
+        start = time.time()
         mess_id = str(uuid.uuid4())
         date_time = datetime.datetime.now()
         mess = {
@@ -19,11 +20,10 @@ def producing():
             'target': df.labels[i],
             'time': date_time.strftime('%Y-%m-%d %H:%M:%S'),
         }
-        producer.send('pig_push_data', json.dumps(mess).encode('utf-8'))
+        producer.send('pig-push-data', json.dumps(mess).encode('utf-8'))
         producer.flush()
 
-        print(' -- PRODUCER: Sent message at {}, message id {}, with labels {} '.format(
-            mess['target'],
+        print(' -- PRODUCER: Sent message at {}, message id {}'.format(
             date_time.strftime('%Y-%m-%d %H:%M:%S'),
             mess_id)
         )
