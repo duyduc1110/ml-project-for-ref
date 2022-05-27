@@ -8,6 +8,7 @@
 
 # Not these files
 !.gitignore
+!requirements.txt
 !*.py
 !note
 !pre_processing.ipynb
