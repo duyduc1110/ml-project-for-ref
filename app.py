@@ -35,7 +35,7 @@ def function_square(n):
                              line_shape='spline',
                              ))
     fig.add_trace(go.Scatter(x=df_plot.idx,
-                             y=df_plot.predict,
+                             y=df_plot.predict_inputs,
                              name="predict",
                              line_shape='spline',
                              fill='tonexty'))
