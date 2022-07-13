@@ -29,9 +29,13 @@ def delivery_report(err, msg):
 
 
 def producing(args):
+    MEAN = -0.5485341293039697
+    STD = 0.901363162490852
     train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, _, _ = get_data('val_new.h5',
-                                                                                                  False,
-                                                                                                  True)
+                                                                                                  True,
+                                                                                                  True,
+                                                                                                  MEAN,
+                                                                                                  STD)
     df = pd.DataFrame({'inputs': train_inputs.tolist(), 'labels': train_deposit_thickness.flatten()})
 
     topic = args.topic
