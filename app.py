@@ -66,15 +66,14 @@ def map_line(path='C:/Users/BruceNguyen/Downloads/pipLine.csv'):
     fig = go.Figure()
 
     colors = ['red', 'green', 'blue', 'orange', 'yellow', 'black']
-    scl = [0, "rgb(150,0,90)"], [0.125, "rgb(0, 0, 200)"], [0.25, "rgb(0, 25, 255)"], \
-          [0.375, "rgb(0, 152, 255)"], [0.5, "rgb(44, 255, 150)"], [0.625, "rgb(151, 255, 0)"], \
-          [0.75, "rgb(255, 234, 0)"], [0.875, "rgb(255, 111, 0)"], [1, "rgb(255, 0, 0)"]
+    scl = [0, "rgb(10,255,0)"], [0.4, "rgb(255, 10, 0)"]
 
     for i in range(len(equinor_df)):
         long = equinor_df.iloc[i].position[:, 0]
         lat = equinor_df.iloc[i].position[:, 1]
-        values = np.random.rand(equinor_df.shape[0])
+        values = np.random.rand(long.shape[0]) / 2.5
         name = equinor_df.iloc[i].pplBelongsToName
+        print(values)
 
         if i == 3:
             print(long.shape)
@@ -92,13 +91,13 @@ def map_line(path='C:/Users/BruceNguyen/Downloads/pipLine.csv'):
                 lon=long,
                 lat=lat,
                 hoverinfo='text',
-                text=name,
+                text=values,
                 marker=dict(
                     color=values,
                     colorscale=scl,
-                    reversescale=True,
+                    #reversescale=True,
                     opacity=0.5,
-                    size=7,
+                    size=5,
                     colorbar=dict(
                         titleside="right",
                         outlinecolor="rgba(68, 68, 68, 0)",
@@ -224,8 +223,8 @@ def load_subdata(selected_value):
     if filtered_df.shape[0] > AGG_DATA_POINTS:
         n = int(filtered_df.shape[0] / AGG_DATA_POINTS)
         new_d = int(filtered_df.shape[0] / n)
-        filtered_df = filtered_df.iloc[: (n * new_d), :] # prevent overload
-        temp_data = filtered_df.values[:, :-1].reshape(new_d, n, -1).mean(1) # average to the same data point
+        filtered_df = filtered_df.iloc[: (n * new_d), :]  # prevent overload
+        temp_data = filtered_df.values[:, :-1].reshape(new_d, n, -1).mean(1)  # average to the same data point
 
         filtered_df = pd.DataFrame({
             'prediction': temp_data[:, 0],
