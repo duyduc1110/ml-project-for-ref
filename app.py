@@ -10,14 +10,7 @@ from dash.exceptions import PreventUpdate
 from train import get_data
 
 AGG_DATA_POINTS = 100
-
-
-# conn = psg.connect(host='10.8.8.105', database='postgres', user='postgres', password='postgres')
-# cur = conn.cursor()
-# cur.execute('SELECT * FROM public."pig-predictions"')
-# df = pd.DataFrame(cur.fetchall(), columns=['target', 'predicted', 'date_time', 'request_id'])
-# cur.close()
-# conn.close()
+conn = psg.connect(host='13.53.45.83', database='postgres', user='postgres', password='postgres')
 
 
 def generate_dump_data(length=100000):
@@ -50,13 +43,24 @@ def generate_dump_data(length=100000):
         'idx': np.arange(train_deposit_thickness.shape[0]),
     })
 
+### START of main Dataframe
 
-df = generate_dump_data()
+# df = generate_dump_data() # Uncomment for the real simulator data
+
+# [SOB-ReadDataFromFile]
+df = pd.read_csv('values.txt')
+df = df.transpose()
+df.index = df.index.astype(int) # format indexes as number
+df = df.rename(columns={0: "prediction", 1: "temperature", 2: "pressure"})
+df['idx'] = df.index
+# [EOB-ReadDataFromFile]
+
+### End of main Dataframe
 
 
 def map_line(path='C:/Users/BruceNguyen/Downloads/pipLine.csv'):
-    df = pd.read_csv(path)
-    equinor_df = df[(df.cmpLongName == 'Equinor Energy AS') & (df.pplMedium == 'Oil')].dropna().reset_index(drop=True)
+    df_map = pd.read_csv(path)
+    equinor_df = df_map[(df_map.cmpLongName == 'Equinor Energy AS') & (df_map.pplMedium == 'Oil')].dropna().reset_index(drop=True)
     f = lambda v: np.array([float(j) for i in v[18:-3].split(',') for j in i.strip().split(' ')]).reshape(-1, 2)
     equinor_df['position'] = equinor_df.pipGeometryWKT.apply(f)
     pv = lambda row: [[long, lat, row[0]] for long, lat in row[1]]
@@ -73,10 +77,10 @@ def map_line(path='C:/Users/BruceNguyen/Downloads/pipLine.csv'):
         lat = equinor_df.iloc[i].position[:, 1]
         values = np.random.rand(long.shape[0]) / 2.5
         name = equinor_df.iloc[i].pplBelongsToName
-        print(values)
+        # print(values)
 
         if i == 3:
-            print(long.shape)
+            # print(long.shape)
             # fig.add_trace(go.Scattergeo(
             #     locationmode='country names',
             #     lon=long,
@@ -157,10 +161,11 @@ def get_app_layout():
     return html.Div([
         # sidebar,
         dbc.Row(dcc.Store('df_store')),
-        dbc.Row(
+
+        dbc.Row([
             dbc.Col(
                 children=[
-                    html.H1('PIG Dashboard'),
+                    dbc.Row(html.H1('PIG Dashboard')),
                     dbc.Row(dbc.Col(
                         dcc.RangeSlider(
                             id='datetime-slider',
@@ -172,10 +177,51 @@ def get_app_layout():
                     )),
                 ],
             ),
-        ),
-        dbc.Row(
-            dbc.Col(dbc.Row(dcc.Graph(id='dt-graph')), style={"height": "50%"}, )
-        ),
+            dbc.Col(
+                dbc.Row(
+                    dcc.Upload(
+                        id='upload-data',
+                        children=html.Div([
+                            'Drag and Drop or ',
+                            html.A('Select Files')
+                        ]),
+                        style={
+                            'width': '100%',
+                            'height': '60px',
+                            'lineHeight': '60px',
+                            'borderWidth': '1px',
+                            'borderStyle': 'dashed',
+                            'borderRadius': '5px',
+                            'textAlign': 'center',
+                            'margin': '10px'
+                        },
+                        # Allow multiple files to be uploaded
+                        multiple=True
+                    )
+                ),
+                width=7,
+            ),
+        ]),
+
+        dbc.Row([
+            dbc.Col(
+                [
+                    dcc.Graph(id='live-update-graph'),
+                    dcc.Interval(
+                        id='interval-component',
+                        interval=1 * 1000,
+                        n_intervals=0
+                    )
+                ]  # real time predict graph
+            )
+        ]),
+
+        dbc.Row([
+            dbc.Col(
+                dbc.Row(dcc.Graph(id='dt-graph')), style={"height": "50%"}, # handle large amount of data
+            )
+        ]),
+
         dbc.Row([
             # dbc.Col(sidebar),
             dbc.Col(
@@ -189,7 +235,7 @@ def get_app_layout():
                     dbc.Row(dcc.Graph(id='t-graph'), style={"height": "50%"}),
                     dbc.Row(dcc.Graph(id='p-graph'), style={"height": "50%"}),
                 ],
-                # width=7,
+                width=7,
                 # style={'margin-left': '7px', 'margin-top': '7px'},
             )
         ]),
@@ -202,14 +248,23 @@ app.layout = get_app_layout
 server = app.server
 
 
-def generate_chart(df, field):
+def generate_chart(df, field, title="", x_title="", y_title=""):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.idx,
                              y=df[field],
                              name="prediction",
                              line_shape='spline',
                              ))
-    # fig.update_layout(template='plotly_dark')
+    fig.update_layout(
+        title={
+            'text': title,
+            'y': 0.9,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'},
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+    )
     return fig
 
 
@@ -219,7 +274,7 @@ def generate_chart(df, field):
 def load_subdata(selected_value):
     filtered_df = df.iloc[selected_value[0]:selected_value[1], :]
 
-    # Aggregate data if needed
+    # [SOB] Aggregate data if needed
     if filtered_df.shape[0] > AGG_DATA_POINTS:
         n = int(filtered_df.shape[0] / AGG_DATA_POINTS)
         new_d = int(filtered_df.shape[0] / n)
@@ -232,10 +287,11 @@ def load_subdata(selected_value):
             'pressure': temp_data[:, 2],
             'idx': np.arange(new_d),
         })
-        print(selected_value[1] - selected_value[0])
-        print(n, new_d)
+        # print(selected_value[1] - selected_value[0])
+        # print(n, new_d)
+    # [EOB] Aggregate data if needed
 
-    print(filtered_df.shape)
+    # print(filtered_df.shape)
     # Format as JSON to return
     filtered_df = filtered_df.to_json()
     return json.dumps(filtered_df)
@@ -251,10 +307,37 @@ def function_square(df_store):
         raise PreventUpdate
     temp_df = pd.read_json(json.loads(df_store))
 
-    return generate_chart(temp_df, "prediction"), generate_chart(temp_df, "temperature"), generate_chart(
-        temp_df, "pressure")
+    return generate_chart(temp_df, "prediction", "DEPOSIT THICKNESS"), \
+           generate_chart(temp_df, "temperature", "TEMPERATURE"), \
+           generate_chart(temp_df, "pressure", "PRESSURE")
+
+
+# UPDATE LIVE GRAPH
+@app.callback(Output('live-update-graph', 'figure'),
+              Input('interval-component', 'n_intervals'))
+def function_square(n):
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM public."pig-predictions" ORDER BY "time" DESC LIMIT 60')
+    df_plot = pd.DataFrame(cur.fetchall(), columns=['target', 'predicted', 'date_time', 'request_id'])
+    df_plot = df_plot.iloc[::-1] # Reverse order to match time series
+    cur.close()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_plot.date_time,
+                             y=df_plot.target,
+                             name="target",
+                             line_shape='spline',
+                             ))
+    fig.add_trace(go.Scatter(x=df_plot.date_time,
+                             y=df_plot.predicted,
+                             name="predict",
+                             line_shape='spline',
+                             fill='tonexty'))
+    return fig
 
 
 if __name__ == '__main__':
     # app.run_server(debug=True)
-    server.run(debug=True)
+
+    server.run(debug=True, )
+    conn.close()

@@ -1,4 +1,4 @@
-import torch
+import argparse
 import json, threading, pandas as pd
 from kafka import KafkaConsumer, KafkaProducer
 
@@ -7,8 +7,8 @@ targets = []
 predicts = []
 
 
-def consuming():
-    c = KafkaConsumer('pig-predictions', bootstrap_servers='10.8.8.105:9092', group_id='predict_consumer')
+def consuming(args):
+    c = KafkaConsumer(args.topic, bootstrap_servers=args., group_id='predict_consumer')
     for msg in c:
         mess = json.loads(msg.value)
         x.append(mess['time'])
@@ -27,4 +27,11 @@ def consuming():
 
 
 if __name__ == '__main__':
-    consuming()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-b', dest='bootstrap_servers', default='localhost:9092', type=str, help='Kafka Host')
+    parser.add_argument('-s', dest="schema_registry", default='localhost:8081', help="Schema Registry")
+    parser.add_argument('-t', dest="topic", default='pig-predictions', help="Topic name")
+    parser.add_argument('-g', dest="group", default='predict_consumer', help="Consumer group")
+    args = parser.parse_args()
+
+    consuming(args)
