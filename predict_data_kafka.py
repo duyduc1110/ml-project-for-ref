@@ -102,6 +102,7 @@ def consuming(args):
 
     consumer = DeserializingConsumer(consumer_conf)
     consumer.subscribe([topic])
+    err = 0
 
     while True:
         try:
@@ -114,6 +115,9 @@ def consuming(args):
             update_prediction(msg.key(), data.target, prediction)
             if data is not None:
                 print("User record {}\tTarget: {}\tPrediction: {}".format(msg.key(), round(data.target, 2), prediction))
+                if prediction != data.target:
+                    err += 1
+                    print("Number of error: ", err)
         except KeyboardInterrupt:
             break
     consumer.close()
@@ -165,8 +169,11 @@ def update_prediction(request_id, target, prediction):
     mess_id = request_id
     date_time = datetime.datetime.now()
     data = PigPrediction(target, prediction, date_time)
-    producer.produce(topic=topic, key=mess_id, value=data,
-                     on_delivery=delivery_report)
+    producer.produce(topic=topic,
+                     key=mess_id,
+                     value=data,
+                     # on_delivery=delivery_report
+                     )
     producer.flush()
 
 

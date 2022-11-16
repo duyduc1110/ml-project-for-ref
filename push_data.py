@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd, uuid, json, datetime, time, argparse, os
 from train import get_data
 from ctypes import *
@@ -28,15 +29,33 @@ def delivery_report(err, msg):
         msg.key(), msg.topic(), msg.partition(), msg.offset()))
 
 
+def process_data(path, MEAN, STD):
+    inputs = []
+    for folder in os.listdir(path):
+        files = os.listdir(path + folder + '/ect_1/data1/2022/2022-11/2022-11-16')
+        for f in files:
+            df = pd.read_csv(path + folder + '/ect_1/data1/2022/2022-11/2022-11-16/' + f, sep='\t', index_col=0, header=None)
+            inputs.append(df.iloc[:, :600].values)
+
+    inputs = np.vstack(inputs)
+    inputs = (inputs - MEAN)/STD
+    labels = np.array([0] * inputs.shape[0])
+
+    return inputs, labels
+
+
 def producing(args):
     MEAN = -0.5485341293039697
     STD = 0.901363162490852
-    train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, _, _ = get_data('val_new.h5',
-                                                                                                  True,
-                                                                                                  True,
-                                                                                                  MEAN,
-                                                                                                  STD)
-    df = pd.DataFrame({'inputs': train_inputs.tolist(), 'labels': train_deposit_thickness.flatten()})
+    # train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, _, _ = get_data(args.path,
+    #                                                                                               True,
+    #                                                                                               True,
+    #                                                                                               MEAN,
+    #                                                                                               STD)
+
+    train_inputs, train_deposit_thickness = process_data(args.path, MEAN, STD)
+
+    df = pd.DataFrame({'inputs': train_inputs.tolist(), 'labels': train_deposit_thickness})
 
     topic = args.topic
 
@@ -89,7 +108,8 @@ def producing(args):
             date_time = datetime.datetime.now()
             data = PigSensor(inputs=df.inputs[i], target=df.labels[i], time=date_time)
             producer.produce(topic=topic, key=mess_id, value=data,
-                             on_delivery=delivery_report)
+                             # on_delivery=delivery_report
+                             )
         except KeyboardInterrupt:
             producer.flush()
             break
@@ -101,7 +121,7 @@ def producing(args):
             date_time.strftime('%Y-%m-%d %H:%M:%S'),
             mess_id)
         )
-        time.sleep(1)
+        time.sleep(0.1)
 
     producer.flush()
 
@@ -111,6 +131,10 @@ if __name__ == '__main__':
     parser.add_argument('-b', dest='bootstrap_servers', default='localhost:9092', type=str, help='Kafka Host')
     parser.add_argument('-s', dest="schema_registry", default='localhost:8081', help="Schema Registry")
     parser.add_argument('-t', dest="topic", default='pig-push-data', help="Topic name")
+    # parser.add_argument('-f', dest="path", default='val_new.h5', help="Topic name")
+    parser.add_argument('-f', dest="path",
+                        default=r'C:\Users\BruceNguyen\Documents\Github\rocsole_dili\data\pipe_0mm_oil\\',
+                        help="Topic name")
     args = parser.parse_args()
 
     producing(args)

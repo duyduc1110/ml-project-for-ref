@@ -75,16 +75,26 @@ def preprocessing_data(arr, MEAN, STD, normalize=True):
 
 
 def get_data(path, no_sample, normalize=True, MEAN=None, STD=None):
-    f = h5py.File(path, 'r')
-    idx = -1 if no_sample else 10000
+    file_type = path[-2:]
 
-    inputs = f.get('inputs')[:idx]
-    inputs, MEAN, STD = preprocessing_data(inputs, MEAN, STD, normalize)
-    cls_label = f.get('cls_label')[:idx]
-    deposit_thickness = f.get('deposit_thickness')[:idx] / 10
-    inner_diameter = f.get('inner_diameter')[:idx]
+    if file_type == 'h5':
+        f = h5py.File(path, 'r')
+        idx = -1 if no_sample else 10000
 
-    return inputs, cls_label, deposit_thickness, inner_diameter, MEAN, STD
+        inputs = f.get('inputs')[:idx]
+        inputs, MEAN, STD = preprocessing_data(inputs, MEAN, STD, normalize)
+        cls_label = f.get('cls_label')[:idx]
+        deposit_thickness = f.get('deposit_thickness')[:idx] / 10
+        inner_diameter = f.get('inner_diameter')[:idx]
+    else:
+        df = pd.read_csv(path, sep='\t', index_col=0, header=None)
+        inputs = df.iloc[:, :600].values
+        inputs, MEAN, STD = preprocessing_data(inputs, MEAN, STD, normalize)
+        cls_label = None
+        deposit_thickness = np.array([[0]] * df.shape[0])
+        inner_diameter = None
+
+    return inputs, cls_label, deposit_thickness.flatten(), inner_diameter, MEAN, STD
 
 
 def get_args():
