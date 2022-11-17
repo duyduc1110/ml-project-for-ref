@@ -1,8 +1,10 @@
 import numpy as np
-import pandas as pd, uuid, json, datetime, time, argparse, os
+import pandas as pd, uuid, json, datetime, time, argparse, os, platform
 from train import get_data
 from ctypes import *
-CDLL("C:\\Users\\BruceNguyen\\miniconda3\\Lib\\site-packages\\confluent_kafka.libs\\librdkafka-5d2e2910.dll")
+
+if platform.system() == 'Windows':
+    CDLL("C:\\Users\\BruceNguyen\\miniconda3\\Lib\\site-packages\\confluent_kafka.libs\\librdkafka-5d2e2910.dll")
 
 from confluent_kafka import SerializingProducer
 from confluent_kafka.serialization import StringSerializer
@@ -32,14 +34,14 @@ def delivery_report(err, msg):
 def process_data(path, MEAN, STD):
     inputs = []
     for folder in os.listdir(path):
-        files = os.listdir(path + folder + '/ect_1/data1/2022/2022-11/2022-11-16')
+        files = os.listdir(path + folder + '/ect_1/data1/2022/2022-11/2022-11-17')
         for f in files:
-            df = pd.read_csv(path + folder + '/ect_1/data1/2022/2022-11/2022-11-16/' + f, sep='\t', index_col=0, header=None)
+            df = pd.read_csv(path + folder + '/ect_1/data1/2022/2022-11/2022-11-17/' + f, sep='\t', index_col=0, header=None)
             inputs.append(df.iloc[:, :600].values)
 
     inputs = np.vstack(inputs)
     inputs = (inputs - MEAN)/STD
-    labels = np.array([0] * inputs.shape[0])
+    labels = np.array([0.2] * inputs.shape[0])
 
     return inputs, labels
 
@@ -101,7 +103,7 @@ def producing(args):
                      'value.serializer': avro_serializer}
 
     producer = SerializingProducer(producer_conf)
-    for i in range(100000):
+    for i in range(df.shape[0]):
         producer.poll(0.0)
         try:
             mess_id = str(uuid.uuid4())
@@ -133,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', dest="topic", default='pig-push-data', help="Topic name")
     # parser.add_argument('-f', dest="path", default='val_new.h5', help="Topic name")
     parser.add_argument('-f', dest="path",
-                        default=r'C:\Users\BruceNguyen\Documents\Github\rocsole_dili\data\pipe_0mm_oil\\',
+                        default=r'C:\Users\BruceNguyen\Documents\Github\rocsole_dili\data\pipe_2mm_oil\\',
                         help="Topic name")
     args = parser.parse_args()
 

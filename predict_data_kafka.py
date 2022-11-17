@@ -1,14 +1,17 @@
 import torch
-import json, threading, argparse, datetime
+import json, threading, argparse, datetime, platform
 from kafka import KafkaConsumer, KafkaProducer
 from model import BruceModel
 from ctypes import *
-CDLL("C:\\Users\\BruceNguyen\\miniconda3\\Lib\\site-packages\\confluent_kafka.libs\\librdkafka-5d2e2910.dll")
 
-from confluent_kafka import SerializingProducer, DeserializingConsumer
-from confluent_kafka.serialization import StringSerializer, StringDeserializer
+if platform.system() == 'Windows':
+    CDLL("C:\\Users\\BruceNguyen\\miniconda3\\Lib\\site-packages\\confluent_kafka.libs\\librdkafka-5d2e2910.dll")
+
+from confluent_kafka import SerializingProducer
+from confluent_kafka.serialization import StringSerializer
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
+from confluent_kafka.schema_registry.avro import AvroSerializer
+
 
 device = 'gpu:0' if torch.cuda.is_available() else 'cpu'
 model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt', map_location=device)
@@ -41,7 +44,8 @@ def predict_inputs(inputs):
     with torch.no_grad():
         cls_out, dt_out, id_out = model(torch.FloatTensor(inputs).unsqueeze(0))
     cls_out = torch.sigmoid(cls_out.flatten())
-    prediction = dt_out.flatten().item() if cls_out > 0.5 else 0
+    # prediction = dt_out.flatten().item() if cls_out > 0.5 else 0
+    prediction = dt_out.flatten().item()
     return prediction
 
 
