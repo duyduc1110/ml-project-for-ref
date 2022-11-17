@@ -7,10 +7,10 @@ from ctypes import *
 if platform.system() == 'Windows':
     CDLL("C:\\Users\\BruceNguyen\\miniconda3\\Lib\\site-packages\\confluent_kafka.libs\\librdkafka-5d2e2910.dll")
 
-from confluent_kafka import SerializingProducer
-from confluent_kafka.serialization import StringSerializer
+from confluent_kafka import SerializingProducer, DeserializingConsumer
+from confluent_kafka.serialization import StringSerializer, StringDeserializer
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
 
 
 model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt')
