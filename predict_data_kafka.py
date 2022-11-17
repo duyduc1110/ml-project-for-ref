@@ -13,8 +13,9 @@ from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 
 
-device = 'gpu:0' if torch.cuda.is_available() else 'cpu'
-model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt', map_location=device)
+model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt')
+if torch.cuda.is_available():
+    model.cuda()
 model.eval()
 
 
