@@ -15,7 +15,10 @@ from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserialize
 
 model = BruceModel.load_from_checkpoint('./model_checkpoint/LSTM.ckpt')
 if torch.cuda.is_available():
+    device = 'cuda'
     model.cuda()
+else:
+    device = 'cpu'
 model.eval()
 
 
@@ -43,10 +46,10 @@ def prediction_to_dict(obj: PigPrediction, ctx):
 
 def predict_inputs(inputs):
     with torch.no_grad():
-        cls_out, dt_out, id_out = model(torch.FloatTensor(inputs).unsqueeze(0))
-    cls_out = torch.sigmoid(cls_out.flatten())
+        cls_out, dt_out, id_out = model(torch.FloatTensor(inputs).unsqueeze(0).to(device))
+    cls_out = torch.sigmoid(cls_out.flatten()).cpu()
     # prediction = dt_out.flatten().item() if cls_out > 0.5 else 0
-    prediction = dt_out.flatten().item()
+    prediction = dt_out.flatten().cpu().item()
     return prediction
 
 
