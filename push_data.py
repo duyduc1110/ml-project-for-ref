@@ -31,7 +31,7 @@ def delivery_report(err, msg):
         msg.key(), msg.topic(), msg.partition(), msg.offset()))
 
 
-def process_data(path, MEAN, STD):
+def process_data(path, MEAN=None, STD=None):
     inputs = []
     for folder in os.listdir(path):
         files = os.listdir(path + folder + '/ect_1/data1/2022/2022-11/2022-11-17')
@@ -40,10 +40,16 @@ def process_data(path, MEAN, STD):
             inputs.append(df.iloc[:, :600].values)
 
     inputs = np.vstack(inputs)
-    inputs = (inputs - MEAN)/STD
-    labels = np.array([0.2] * inputs.shape[0])
+    inputs[inputs > 1] = 0
 
-    return inputs, labels
+    if MEAN is None:
+        MEAN = inputs.mean()
+        STD = inputs.std()
+
+    inputs = (inputs - MEAN)/STD
+    labels = np.array([0] * inputs.shape[0])
+
+    return -inputs, labels
 
 
 def producing(args):
@@ -55,9 +61,10 @@ def producing(args):
     #                                                                                               MEAN,
     #                                                                                               STD)
 
-    train_inputs, train_deposit_thickness = process_data(args.path, MEAN, STD)
+    train_inputs, train_deposit_thickness = process_data(args.path)
 
     df = pd.DataFrame({'inputs': train_inputs.tolist(), 'labels': train_deposit_thickness})
+    # pd.DataFrame(np.hstack([train_inputs, train_deposit_thickness.reshape(-1,1)])).to_csv(f'./data/pig_2.csv', sep='\t', index=False)
 
     topic = args.topic
 

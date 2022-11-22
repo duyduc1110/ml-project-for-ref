@@ -262,7 +262,7 @@ def generate_chart(df, field, title="", x_title="", y_title=""):
             'x': 0.5,
             'xanchor': 'center',
             'yanchor': 'top'},
-        xaxis_title=x_title,
+        # xaxis_title=x_title,
         yaxis_title=y_title,
     )
     return fig
@@ -312,28 +312,28 @@ def function_square(df_store):
            generate_chart(temp_df, "pressure", "PRESSURE")
 
 
-# UPDATE LIVE GRAPH
-@app.callback(Output('live-update-graph', 'figure'),
-              Input('interval-component', 'n_intervals'))
-def function_square(n):
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM public."pig-predictions" ORDER BY "time" DESC LIMIT 60')
-    df_plot = pd.DataFrame(cur.fetchall(), columns=['target', 'predicted', 'date_time', 'request_id'])
-    df_plot = df_plot.iloc[::-1] # Reverse order to match time series
-    cur.close()
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_plot.date_time,
-                             y=df_plot.target,
-                             name="target",
-                             line_shape='spline',
-                             ))
-    fig.add_trace(go.Scatter(x=df_plot.date_time,
-                             y=df_plot.predicted,
-                             name="predict",
-                             line_shape='spline',
-                             fill='tonexty'))
-    return fig
+# UPDATE LIVE GRAPH NEW (WITH LIVE PREDICTION)
+# @app.callback(Output('live-update-graph', 'figure'),
+#               Input('interval-component', 'n_intervals'))
+# def function_square(n):
+#     cur = conn.cursor()
+#     cur.execute('SELECT * FROM public."pig-predictions" ORDER BY "time" DESC LIMIT 60')
+#     df_plot = pd.DataFrame(cur.fetchall(), columns=['target', 'predicted', 'date_time', 'request_id'])
+#     df_plot = df_plot.iloc[::-1] # Reverse order to match time series
+#     cur.close()
+#
+#     fig = go.Figure()
+#     fig.add_trace(go.Scatter(x=df_plot.date_time,
+#                              y=df_plot.target,
+#                              name="target",
+#                              line_shape='spline',
+#                              ))
+#     fig.add_trace(go.Scatter(x=df_plot.date_time,
+#                              y=df_plot.predicted,
+#                              name="predict",
+#                              line_shape='spline',
+#                              fill='tonexty'))
+#     return fig
 
 
 if __name__ == '__main__':
