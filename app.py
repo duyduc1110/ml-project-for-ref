@@ -339,7 +339,7 @@ def function_square(df_store):
 if __name__ == '__main__':
     # app.run_server(debug=True)
     parser = argparse.ArgumentParser()
-    parser.add_argument('-h', dest='host', default='localhost', type=str, help='IP of host')
+    parser.add_argument('-s', dest='host', default='localhost', type=str, help='IP of host')
     parser.add_argument('-p', dest='port', default='5000', help="Port of Dash")
     args = parser.parse_args()
 
