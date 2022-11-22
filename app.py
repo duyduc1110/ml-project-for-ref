@@ -58,7 +58,7 @@ df['idx'] = df.index
 ### End of main Dataframe
 
 
-def map_line(path='C:/Users/BruceNguyen/Downloads/pipLine.csv'):
+def map_line(path='pipLine.csv'):
     df_map = pd.read_csv(path)
     equinor_df = df_map[(df_map.cmpLongName == 'Equinor Energy AS') & (df_map.pplMedium == 'Oil')].dropna().reset_index(drop=True)
     f = lambda v: np.array([float(j) for i in v[18:-3].split(',') for j in i.strip().split(' ')]).reshape(-1, 2)
@@ -199,22 +199,22 @@ def get_app_layout():
                         multiple=True
                     )
                 ),
-                width=7,
+                width=4,
             ),
         ]),
 
-        dbc.Row([
-            dbc.Col(
-                [
-                    dcc.Graph(id='live-update-graph'),
-                    dcc.Interval(
-                        id='interval-component',
-                        interval=1 * 1000,
-                        n_intervals=0
-                    )
-                ]  # real time predict graph
-            )
-        ]),
+        # dbc.Row([
+        #     dbc.Col(
+        #         [
+        #             dcc.Graph(id='live-update-graph'),
+        #             dcc.Interval(
+        #                 id='interval-component',
+        #                 interval=1 * 1000,
+        #                 n_intervals=0
+        #             )
+        #         ]  # real time predict graph
+        #     )
+        # ]),
 
         dbc.Row([
             dbc.Col(
