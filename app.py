@@ -1,4 +1,4 @@
-import psycopg2 as psg
+# import psycopg2 as psg
 import dash, json
 import dash_bootstrap_components as dbc
 import plotly.express as px, pandas as pd, numpy as np
@@ -10,7 +10,7 @@ from dash.exceptions import PreventUpdate
 from train import get_data
 
 AGG_DATA_POINTS = 100
-conn = psg.connect(host='13.53.45.83', database='postgres', user='postgres', password='postgres')
+# conn = psg.connect(host='13.53.45.83', database='postgres', user='postgres', password='postgres')
 
 
 def generate_dump_data(length=100000):
@@ -340,4 +340,4 @@ if __name__ == '__main__':
     # app.run_server(debug=True)
 
     server.run(debug=True, )
-    conn.close()
+    # conn.close()
