@@ -1,5 +1,5 @@
 # import psycopg2 as psg
-import dash, json
+import dash, json, argparse
 import dash_bootstrap_components as dbc
 import plotly.express as px, pandas as pd, numpy as np
 import plotly.graph_objects as go, plotly.io as pio
@@ -338,6 +338,10 @@ def function_square(df_store):
 
 if __name__ == '__main__':
     # app.run_server(debug=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-h', dest='host', default='localhost', type=str, help='IP of host')
+    parser.add_argument('-p', dest='port', default='5000', help="Port of Dash")
+    args = parser.parse_args()
 
-    server.run(debug=True, )
+    server.run(debug=True, host=args.host, port=args.port)
     # conn.close()
