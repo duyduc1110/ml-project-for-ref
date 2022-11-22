@@ -340,7 +340,8 @@ if __name__ == '__main__':
     # app.run_server(debug=True)
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', dest='host', default='localhost', type=str, help='IP of host')
-    parser.add_argument('-p', dest='port', default='5000', help="Port of Dash")
+    parser.add_argument('-p', dest='port', default='5000', type=str, help="Port of Dash")
+    parser.add_argument('-d', dest='debug', default=True, type=bool, help="Port of Dash")
     args = parser.parse_args()
 
     server.run(debug=True, host=args.host, port=args.port)
