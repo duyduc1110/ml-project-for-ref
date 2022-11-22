@@ -344,5 +344,5 @@ if __name__ == '__main__':
     parser.add_argument('-d', dest='debug', default=True, type=bool, help="Port of Dash")
     args = parser.parse_args()
 
-    server.run(debug=True, host=args.host, port=args.port)
+    server.run(debug=args.debug, host=args.host, port=args.port)
     # conn.close()
