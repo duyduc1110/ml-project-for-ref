@@ -55,13 +55,13 @@ def process_data(path, MEAN=None, STD=None):
 def producing(args):
     MEAN = -0.5485341293039697
     STD = 0.901363162490852
-    # train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, _, _ = get_data(args.path,
-    #                                                                                               True,
-    #                                                                                               True,
-    #                                                                                               MEAN,
-    #                                                                                               STD)
+    train_inputs, train_cls_label, train_deposit_thickness, train_inner_diameter, _, _ = get_data(args.path,
+                                                                                                  True,
+                                                                                                  True,
+                                                                                                  MEAN,
+                                                                                                  STD)
 
-    train_inputs, train_deposit_thickness = process_data(args.path)
+    # train_inputs, train_deposit_thickness = process_data(args.path)
 
     df = pd.DataFrame({'inputs': train_inputs.tolist(), 'labels': train_deposit_thickness})
     # pd.DataFrame(np.hstack([train_inputs, train_deposit_thickness.reshape(-1,1)])).to_csv(f'./data/pig_2.csv', sep='\t', index=False)
@@ -140,10 +140,10 @@ if __name__ == '__main__':
     parser.add_argument('-b', dest='bootstrap_servers', default='localhost:9092', type=str, help='Kafka Host')
     parser.add_argument('-s', dest="schema_registry", default='localhost:8081', help="Schema Registry")
     parser.add_argument('-t', dest="topic", default='pig-push-data', help="Topic name")
-    # parser.add_argument('-f', dest="path", default='val_new.h5', help="Topic name")
-    parser.add_argument('-f', dest="path",
-                        default=r'C:\Users\BruceNguyen\Documents\Github\rocsole_dili\data\pipe_2mm_oil\\',
-                        help="Topic name")
+    parser.add_argument('-f', dest="path", default='val_new.h5', help="Topic name")
+    # parser.add_argument('-f', dest="path",
+    #                     default=r'C:\Users\BruceNguyen\Documents\Github\rocsole_dili\data\pipe_2mm_oil\\',
+    #                     help="Topic name")
     args = parser.parse_args()
 
     producing(args)

@@ -265,6 +265,8 @@ def generate_chart(df, field, title="", x_title="", y_title=""):
         # xaxis_title=x_title,
         yaxis_title=y_title,
     )
+
+    fig.update_xaxes(visible=False)
     return fig
 
 

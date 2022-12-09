@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
+from model import BruceModel
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from sklearn.model_selection import train_test_split

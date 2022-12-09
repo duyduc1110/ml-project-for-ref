@@ -71,7 +71,10 @@ def preprocessing_data(arr, MEAN, STD, normalize=True):
     if MEAN is None:
         MEAN = arr.mean()
         STD = arr.std()
-    return (arr - MEAN) / STD, MEAN, STD
+    # return (arr - MEAN) / STD, MEAN, STD
+
+    arr[arr != 0] = (arr[arr != 0] - MEAN) / STD
+    return arr, MEAN, STD
 
 
 def get_data(path, no_sample, normalize=True, MEAN=None, STD=None):
@@ -210,7 +213,7 @@ if __name__ == '__main__':
 
     # Generate model
     MODEL_NAME = f'{args.backbone.upper()}-{DATETIME_NOW}_{getpass.getuser()}'
-    wandb_logger = WandbLogger(project='Rocsole_DILI', name=MODEL_NAME, log_model=True)
+    wandb_logger = WandbLogger(project='Rocsole_DILI_Bruce', name=MODEL_NAME, log_model=True, entity='duyduc1110')
     model = BruceModel(**args.__dict__)
     logger.info(model)
 
