@@ -393,16 +393,16 @@ class BruceModel(pl.LightningModule):
         self.cls_outs = []
 
     def on_validation_epoch_end(self) -> None:
-        df = pd.DataFrame({
+        self.df = pd.DataFrame({
             'y_true': torch.tensor(self.true_values).numpy(),
             'y_predict': torch.tensor(self.predicted_values).numpy(),
         })
 
-        possible_true = df.y_true.unique()
+        possible_true = self.df.y_true.unique()
         log_dict = {}
 
         for k in possible_true:
-            hist_data = np.histogram(df[df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
+            hist_data = np.histogram(self.df[self.df.y_true == k].y_predict.values, range=(0.0, 0.4), bins=8)
             log_dict[f'hist/{str(k)}'] = wandb.Histogram(np_histogram=hist_data)
 
         log_dict['hist/cls'] = wandb.Histogram(
@@ -413,7 +413,7 @@ class BruceModel(pl.LightningModule):
 
         self.logger.experiment.log(log_dict)
 
-        df.to_csv('temp_prediction.csv', index=False) # Save as csv
+        # df.to_csv('temp_prediction.csv', index=False) # Save as csv
 
         # df.plot.hist(column=['y_predict'], by='y_true', figsize=(15, 30))
         # plt.savefig('temp_histogram.jpg')
@@ -426,7 +426,7 @@ class BruceModel(pl.LightningModule):
         wandb.Table.MAX_ROWS = 1000000
         artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
         artifact.add(
-            wandb.Table(dataframe=pd.read_csv('temp_prediction.csv')),
+            wandb.Table(dataframe=self.df),
             name='prediction_values'
         )
         logger.experiment.log_artifact(artifact, aliases=['best'])
