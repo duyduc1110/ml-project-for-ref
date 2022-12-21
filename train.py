@@ -69,8 +69,8 @@ def preprocessing_data(arr, MEAN, STD, normalize=True):
 
     # Data standardization
     if MEAN is None:
-        MEAN = arr.mean()
-        STD = arr.std()
+        MEAN = arr[arr != 0].mean()
+        STD = arr[arr != 0].std()
     # return (arr - MEAN) / STD, MEAN, STD
 
     arr[arr != 0] = (arr[arr != 0] - MEAN) / STD
