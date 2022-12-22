@@ -262,13 +262,11 @@ if __name__ == '__main__':
     model.load_from_checkpoint(model_checker.best_model_path)  # load best model checkpoint
 
     # Store prediction from best model
-    # dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts = get_predict(model,
-    #                                                                                 (train_dataloader, val_dataloader))
-    # df = pd.DataFrame(np.array([dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts]).T,
-    #                   columns=['dt_trues', 'id_trues', 'cls', 'dt_predicts', 'id_predicts', 'final_predicts'])
-    # df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
-    #
-    # '''
-    # wandb.Table.MAX_ROWS = 1000000
-    # wandb_logger.experiment.log({'predictions': wandb.Table(dataframe=df)})
-    # '''
+    dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts = get_predict(model,
+                                                                                    (train_dataloader, val_dataloader))
+    df = pd.DataFrame(np.array([dt_trues, id_trues, cls, dt_predicts, id_predicts, final_predicts]).T,
+                      columns=['dt_trues', 'id_trues', 'cls', 'dt_predicts', 'id_predicts', 'final_predicts'])
+    df.to_csv(f'./predicts/{MODEL_NAME}.csv', index=False)
+
+    wandb.Table.MAX_ROWS = 1000000
+    wandb_logger.experiment.log({'predictions': wandb.Table(dataframe=df)})

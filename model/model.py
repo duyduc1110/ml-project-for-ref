@@ -313,6 +313,7 @@ class BruceModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         if self.trainer.global_step == 0:
             wandb.define_metric('train/rgs_loss', summary='min', goal='minimize')
+            wandb.define_metric('train/cls_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
 
@@ -351,6 +352,7 @@ class BruceModel(pl.LightningModule):
         # Track best rgs loss
         if self.trainer.global_step == 0:
             wandb.define_metric('val/rgs_loss', summary='min', goal='minimize')
+            wandb.define_metric('val/cls_loss', summary='min', goal='minimize')
         inputs, cls_labels, dt_labels, id_labels = batch
         cls_out, dt_out, id_out = self(inputs)
 
@@ -424,12 +426,12 @@ class BruceModel(pl.LightningModule):
     def save_df(self, logger: WandbLogger, current_epoch=None):
         # Save Result as Table
         wandb.Table.MAX_ROWS = 1000000
-        artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
-        artifact.add(
-            wandb.Table(dataframe=self.df),
-            name='prediction_values'
-        )
-        logger.experiment.log_artifact(artifact, aliases=['best'])
+        # artifact = wandb.Artifact(name=f'run-{logger.experiment.id}', type='prediction')
+        # artifact.add(
+        #     wandb.Table(dataframe=self.df),
+        #     name='prediction_values'
+        # )
+        # logger.experiment.log_artifact(artifact, aliases=['best'])
         #
         # # Save histogram to Wandb
         # im = plt.imread('temp_histogram.jpg')
