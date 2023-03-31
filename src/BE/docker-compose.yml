@@ -1,0 +1,175 @@
+version: '3.7'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:5.4.2
+    container_name: zookeeper
+    volumes:
+      - $VOLUME_PATH/zookeeper-data:/var/lib/zookeeper/data
+      - $VOLUME_PATH/zookeeper-log:/var/lib/zookeeper/log
+      - $VOLUME_PATH/zookeeper-secrets:/etc/zookeeper/secrets
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+
+  broker:
+    image: confluentinc/cp-kafka:5.4.2
+    container_name: broker
+    ports:
+      - 9092:9092
+    depends_on:
+      - zookeeper
+    volumes:
+      - $VOLUME_PATH/broker-data:/var/lib/kafka/data
+      - $VOLUME_PATH/broker-secrets:/etc/kafka/secrets
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://broker:29092,PLAINTEXT_HOST://$PUBLIC_IP:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+    extra_hosts:
+      - "localhost: 127.0.0.1"
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:6.1.0
+    container_name: schema-registry
+    volumes:
+      - $VOLUME_PATH/schema-registry-secrets:/etc/schema-registry/secrets
+    depends_on:
+      - zookeeper
+      - broker
+    ports:
+      - 8081:8081
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect-base:6.1.0
+    container_name: kafka-connect
+    depends_on:
+      - broker
+      - schema-registry
+    ports:
+      - 8083:8083
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "broker:29092"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _kafka-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _kafka-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _kafka-connect-status
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_LOG4J_ROOT_LOGLEVEL: "INFO"
+      CONNECT_LOG4J_LOGGERS: "org.apache.kafka.connect.runtime.rest=WARN,org.reflections=ERROR"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_PLUGIN_PATH: '/usr/share/java,/usr/share/confluent-hub-components/,/connectors/'
+      # If you want to use the Confluent Hub installer to d/l component, but make them available
+      # when running this offline, spin up the stack once and then run : 
+      #   docker cp kafka-connect:/usr/share/confluent-hub-components ./connectors
+      #   mv ./connectors/confluent-hub-components/* ./connectors
+      #   rm -rf ./connectors/confluent-hub-components
+    volumes:
+      - $VOLUME_PATH/connectors:/connectors
+      - $VOLUME_PATH/kafka-connect-data:/var/lib/kafka/data
+      - $VOLUME_PATH/kafka-connect-jars:/etc/kafka-connect/jars
+      - $VOLUME_PATH/kafka-connect-connect-secrets:/etc/kafka-connect/secrets
+      - $VOLUME_PATH/kafka-connect-secrets:/etc/kafka/secrets
+    # In the command section, $ are replaced with $$ to avoid the error 'Invalid interpolation format for "command" option'
+    command: 
+      - bash 
+      - -c 
+      - |
+        echo "Installing connector plugins"
+        confluent-hub install --no-prompt mdrogalis/voluble:0.3.1
+        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:5.5.3
+        # Sticking to 5.5.3 at the moment because of issue with 10.0.1 https://rmoff.net/2021/03/11/kafka-connect-sqlsyntaxerrorexception-blob/text-column-used-in-key-specification-without-a-key-length/
+        #
+        echo "Downloading JDBC driver"
+        cd /usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc
+        # Find the latest version of this https://dev.mysql.com/downloads/connector/j/
+        curl https://cdn.mysql.com/Downloads/Connector-J/mysql-connector-java-8.0.23.tar.gz | tar xz 
+        #
+        echo "Launching Kafka Connect worker"
+        /etc/confluent/docker/run & 
+        #
+        sleep infinity
+
+  ksqldb:
+    image: confluentinc/ksqldb-server:0.15.0
+    hostname: ksqldb
+    container_name: ksqldb
+    depends_on:
+      - broker
+      - kafka-connect
+    ports:
+      - "8088:8088"
+    environment:
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_BOOTSTRAP_SERVERS: broker:29092
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
+      KSQL_KSQL_CONNECT_URL: http://kafka-connect:8083
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_SERVICE_ID: confluent_rmoff_01
+      KSQL_KSQL_HIDDEN_TOPICS: '^_.*'
+
+  postgres:
+    image: postgres:11-alpine
+    container_name: postgres
+    ports:
+      - 5433:5432
+    environment:
+      - PGDATA=/var/lib/postgresql/data/temp_files/
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - $VOLUME_PATH/postgres-data:/var/lib/postgresql/data
+
+  metabase:
+    image: metabase/metabase
+    container_name: metabase
+    depends_on:
+      - postgres
+    ports:
+      - 3030:3000
+    environment:
+      - MB_DB_TYPE=postgres
+      - MB_DB_DBNAME=metabase
+      - MB_DB_PORT=5432
+      - MB_DB_USER=postgres
+      - MB_DB_PASS=postgres
+      - MB_DB_HOST=postgres
+
+volumes:
+  broker-data:
+    external: true
+  broker-secrets:
+    external: true
+  kafka-connect-data:
+    external: true
+  kafka-connect-jars:
+    external: true
+  kafka-connect-connect-secrets:
+    external: true
+  kafka-connect-secrets:
+    external: true
+  schema-registry-secrets:
+    external: true
+  zookeeper-data:
+    external: true
+  zookeeper-log:
+    external: true
+  zookeeper-secrets:
+    external: true
+  postgres-data:
+    external: true

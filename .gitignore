@@ -1,11 +1,16 @@
 # Ignore everything
 */*
 /*
+src/liquid-detection/data
+src/ipig-model/model_checkpoint
+
 
 # Not these directories
 !model/
 !utils/
 !src/
+!src/*
+
 
 # Not these files
 !.gitignore
