@@ -5,6 +5,7 @@
 # Not these directories
 !model/
 !utils/
+!src/
 
 # Not these files
 !.gitignore

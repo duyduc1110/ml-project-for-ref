@@ -1,6 +1,5 @@
 import torch
 import json, threading, argparse, datetime, platform
-from kafka import KafkaConsumer, KafkaProducer
 from model import BruceModel
 from ctypes import *
 
@@ -188,7 +187,7 @@ def update_prediction(request_id, target, prediction):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', dest='bootstrap_servers', default='localhost:9092', type=str, help='Kafka Host')
-    parser.add_argument('-s', dest="schema_registry", default='localhost:8081', help="Schema Registry")
+    parser.add_argument('-s', dest="schema_registry", default='http://127.0.0.1:8081', help="Schema Registry")
     parser.add_argument('-t', dest="topic", default='pig-push-data', help="Topic name")
     parser.add_argument('-g', dest="group", default="data-consuming1", help="Consumer group")
     args = parser.parse_args()
